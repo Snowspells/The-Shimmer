@@ -25,6 +25,9 @@ const { info, warn, error, debug, success } = require('./Console');
  *     RCON_CMD_HEALALL    = "healall"
  *     RCON_CMD_WHISPER    = "whisper {agid} {message}"
  *     RCON_CMD_TELEPORT   = "teleport {agid} {x} {y} {z}"
+ *     RCON_CMD_ADDMARKS    = "addmarks {agid} {amount}"
+ *     RCON_CMD_REMOVEMARKS = "removemarks {agid} {amount}"
+ *     RCON_CMD_SETMARKS    = "setmarks {agid} {amount}"
  */
 class RconManager {
     constructor() {
@@ -50,7 +53,11 @@ class RconManager {
             heal: process.env.RCON_CMD_HEAL || 'heal {agid}',
             healall: process.env.RCON_CMD_HEALALL || 'healall',
             whisper: process.env.RCON_CMD_WHISPER || 'whisper {agid} {message}',
-            teleport: process.env.RCON_CMD_TELEPORT || 'teleport {agid} {x} {y} {z}'
+            teleport: process.env.RCON_CMD_TELEPORT || 'teleport {agid} {x} {y} {z}',
+            // Per-character Marks economy commands (target by AGID).
+            addmarks: process.env.RCON_CMD_ADDMARKS || 'addmarks {agid} {amount}',
+            removemarks: process.env.RCON_CMD_REMOVEMARKS || 'removemarks {agid} {amount}',
+            setmarks: process.env.RCON_CMD_SETMARKS || 'setmarks {agid} {amount}'
         };
 
         this.loadConfig();
@@ -285,6 +292,24 @@ class RconManager {
 
     async teleport(agid, x, y, z, serverName = null) {
         const command = this.format(this.commands.teleport, { agid, x, y, z });
+        return this.send(serverName, command);
+    }
+
+    /** Add Marks to a character (by AGID). Returns the server's response text. */
+    async addMarks(agid, amount, serverName = null) {
+        const command = this.format(this.commands.addmarks, { agid, amount });
+        return this.send(serverName, command);
+    }
+
+    /** Remove Marks from a character (by AGID). Returns the server's response text. */
+    async removeMarks(agid, amount, serverName = null) {
+        const command = this.format(this.commands.removemarks, { agid, amount });
+        return this.send(serverName, command);
+    }
+
+    /** Set a character's Marks total (by AGID). Returns the server's response text. */
+    async setMarks(agid, amount, serverName = null) {
+        const command = this.format(this.commands.setmarks, { agid, amount });
         return this.send(serverName, command);
     }
 

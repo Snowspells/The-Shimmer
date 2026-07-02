@@ -347,6 +347,37 @@ class DatabaseManager {
         }
     }
 
+    /**
+     * Atomically change a user's marks balance by `delta`, refusing the change
+     * if it would drop below zero. Returns an object describing the outcome:
+     *   { ok: true, marks }                 - new balance after the change
+     *   { ok: false, reason: 'no_user' }    - no linked user row
+     *   { ok: false, reason: 'insufficient', marks } - delta would go negative
+     *   { ok: false, reason: 'error' }      - unexpected failure
+     * @param {string} discordId
+     * @param {number} delta integer amount (may be negative)
+     */
+    adjustMarks(discordId, delta) {
+        try {
+            const change = this.db.transaction((did, d) => {
+                const row = this.db.prepare('SELECT marks FROM users WHERE DID = ?').get(did);
+                if (!row) return { ok: false, reason: 'no_user' };
+                const current = row.marks || 0;
+                const next = current + d;
+                if (next < 0) return { ok: false, reason: 'insufficient', marks: current };
+                this.db.prepare('UPDATE users SET marks = ? WHERE DID = ?').run(next, did);
+                return { ok: true, marks: next };
+            });
+            const result = change(discordId, delta);
+            this.checkpointWAL();
+            return result;
+        } catch (err) {
+            const { error } = require('./Console');
+            error('Error adjusting marks:', err);
+            return { ok: false, reason: 'error' };
+        }
+    }
+
     getAllUsers() {
         try {
             const results = this.db.prepare('SELECT * FROM users').all();
