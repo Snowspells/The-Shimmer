@@ -94,6 +94,10 @@ placeholders are substituted at send time.
 | `RCON_CMD_HEALALL` | `healall` |
 | `RCON_CMD_WHISPER` | `whisper {agid} {message}` |
 | `RCON_CMD_TELEPORT` | `teleport {agid} {x} {y} {z}` |
+| `RCON_CMD_ADDMARKS` | `addmarks {agid} {amount}` |
+| `RCON_CMD_REMOVEMARKS` | `removemarks {agid} {amount}` |
+| `RCON_CMD_SETMARKS` | `setmarks {agid} {amount}` |
+| `RCON_MARKS_FAIL_REGEX` | _(built-in list of failure phrases)_ |
 
 ### Webhook parsing patterns (advanced)
 
@@ -125,6 +129,35 @@ join and chat events and is visible in the Staff Panel.
 
 ---
 
+## Marks Economy (deposit / withdraw)
+
+Players can move the in-game currency **Marks** between their character in-game
+and a stored balance tracked by the bot (the `marks` column shown as "Marks" on
+the dashboard, referred to here as the player's *inventory*).
+
+- **`/withdraw amount:<n>`** — deducts `n` from the inventory balance (capped at
+  what the bot holds), then runs `addmarks {agid} {n}` in-game. The DB change is
+  rolled back if the RCON call fails or the server reports an error.
+- **`/deposit amount:<n>`** — runs `removemarks {agid} {n}` in-game and only
+  credits the inventory balance if the reply does **not** look like a failure.
+
+Both target the player's **linked AGID**, so the player must be linked (`/link`)
+and online in-game. Marks are per-character, so the change applies to the
+character currently active on the target server (defaults to the primary server;
+pass `server:` to pick another).
+
+> **Deposit cap / safety.** Path of Titans exposes no RCON command to *read* a
+> character's Marks, so the deposit cap depends on `removemarks` refusing or
+> erroring when the character lacks the funds. The Echo credits the inventory
+> only when the RCON reply does not match `RCON_MARKS_FAIL_REGEX` (a built-in set
+> of phrases like "not enough", "insufficient", "no such player", "error"). If
+> your server's wording differs, set `RCON_MARKS_FAIL_REGEX` to match it, e.g.
+> `RCON_MARKS_FAIL_REGEX=/not enough marks|insufficient/i`. If `removemarks`
+> silently removes only what's available without reporting it, deposits could
+> over-credit — verify your server's behavior before relying on `/deposit`.
+
+---
+
 ## Discord Commands
 
 | Command | Access | Description |
@@ -133,6 +166,8 @@ join and chat events and is visible in the Staff Panel.
 | `/linkverify code:<code>` | Everyone | Finish linking with the in-game code |
 | `/players [server]` | Manage Messages | List players currently online (RCON) |
 | `/announce message:<text> [server]` | Manage Messages | Broadcast a server-wide announcement |
+| `/deposit amount:<n> [server]` | Everyone (linked) | Move Marks from your character in-game into your inventory |
+| `/withdraw amount:<n> [server]` | Everyone (linked) | Move Marks from your inventory onto your character in-game |
 | `/server status` | Administrator | Show configured RCON servers and connection state |
 | `/server kick agid:<AGID> [reason] [server]` | Administrator | Kick a player |
 | `/server ban agid:<AGID> [hours] [reason] [server]` | Administrator | Ban a player (`hours=0` = permanent) |

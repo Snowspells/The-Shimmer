@@ -45,6 +45,8 @@ Requires RCON to be configured. See **[Path of Titans Integration](Path-of-Titan
 |---------|-------------|--------|
 | `/players [server]` | Lists players currently online on the server. | Manage Messages |
 | `/announce <message> [server]` | Broadcasts a server-wide announcement in-game. | Manage Messages |
+| `/deposit <amount> [server]` | Moves Marks from your character in-game into your inventory. | Everyone (linked) |
+| `/withdraw <amount> [server]` | Moves Marks from your inventory onto your character in-game. | Everyone (linked) |
 | `/server status` | Shows configured RCON servers and connection state. | Administrator |
 | `/server kick <agid> [reason] [server]` | Kicks a player. | Administrator |
 | `/server ban <agid> [hours] [reason] [server]` | Bans a player (`hours=0` = permanent). | Administrator |
