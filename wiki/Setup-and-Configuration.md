@@ -11,7 +11,7 @@ This guide walks through everything needed to get The Shimmer running.
 ## 1. Install Dependencies
 
 ```bash
-git clone https://github.com/Snowspells/The-Echo.git The-Shimmer
+git clone https://github.com/Snowspells/The-Shimmer.git The-Shimmer
 cd The-Shimmer
 npm install
 ```
@@ -206,7 +206,7 @@ Create the service account and install the project under its home:
 ```bash
 sudo useradd --system --user-group --shell /usr/sbin/nologin the-shimmer
 sudo install -d --owner=the-shimmer --group=the-shimmer /opt/the-shimmer
-sudo -u the-shimmer git clone https://github.com/Snowspells/The-Echo.git /opt/the-shimmer
+sudo -u the-shimmer git clone https://github.com/Snowspells/The-Shimmer.git /opt/the-shimmer
 cd /opt/the-shimmer
 sudo -u the-shimmer cp src/example.config.js src/config.js
 sudo -u the-shimmer npm ci --omit=dev

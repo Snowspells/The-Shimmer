@@ -21,7 +21,7 @@
 
 1. **Clone & install:**
    ```bash
-   git clone https://github.com/Snowspells/The-Echo.git The-Shimmer
+   git clone https://github.com/Snowspells/The-Shimmer.git The-Shimmer
    cd The-Shimmer
    npm install
    ```
