@@ -19,6 +19,8 @@ const adminRoutes = require('./routes/admin');
 const apiRoutes = require('./routes/api');
 const ticketRoutes = require('./routes/tickets');
 const chatRoutes = require('./routes/chat');
+const suggestionRoutes = require('./routes/suggestions');
+const reactionRoleRoutes = require('./routes/reaction-roles');
 const clientAuthRoutes = require('./routes/client-auth');
 
 class WebServer {
@@ -129,6 +131,9 @@ class WebServer {
             req.db = this.client.database;
             req.webServer = this;
             res.locals.user = req.session.user || null;
+            res.locals.isLinkedMember = Boolean(
+                req.session.user && this.client.database.getUserByDiscordId(req.session.user.id)
+            );
             res.locals.aiChatChannelConfigured = Boolean(
                 process.env.AI_CHAT_CHANNEL_ID || process.env.ALLOWED_CHANNEL_ID
             );
@@ -150,6 +155,8 @@ class WebServer {
         this.app.use('/api', apiRoutes);
         this.app.use('/tickets', ticketRoutes);
         this.app.use('/chat', chatRoutes);
+        this.app.use('/suggestions', suggestionRoutes);
+        this.app.use('/admin/reaction-roles', reactionRoleRoutes);
         this.app.use('/auth/client', clientAuthRoutes);
 
         this.app.use((req, res) => {

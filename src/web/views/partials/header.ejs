@@ -16,8 +16,14 @@
             <% if (user) { %>
             <a href="/dashboard">Dashboard</a>
             <a href="/tickets">Live Communication</a>
+                <% if (typeof isLinkedMember !== 'undefined' && isLinkedMember) { %>
+                    <a href="/suggestions">Suggestions</a>
+                <% } %>
                 <% if (user.webPermissions?.canViewStaffPanel) { %>
                     <a href="/admin">Staff Panel</a>
+                    <% if (user.webPermissions?.canRefreshCommands) { %>
+                        <a href="/admin/reaction-roles">Reaction Roles</a>
+                    <% } %>
                     <span class="staff-badge staff-level-<%= user.staffLevel %>"><%= user.staffLabel %></span>
                 <% } %>
                 <div class="nav-user">

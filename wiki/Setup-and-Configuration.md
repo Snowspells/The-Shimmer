@@ -68,6 +68,9 @@ DEVELOPER_USER_ID=your_discord_user_id
 # ── Moderation Audit ─────────────────────────────────────
 MODERATION_LOG_CHANNEL_ID=discord_channel_id_for_moderation_audit_logs
 
+# ── Suggestions Board ────────────────────────────────────
+SUGGESTION_LOG_CHANNEL_ID=discord_channel_id_for_suggestion_decline_logs
+
 # ── Chat Bridge ─────────────────────────────────────────
 BRIDGE_CHANNEL_ID=discord_channel_id_for_chat_bridge
 BRIDGE_API_KEY=a_secret_key_shared_with_your_game_server
@@ -107,12 +110,13 @@ LOG_LEVEL=info
 | `WEB_TLS_CERT_PATH` | No | Path to the TLS certificate PEM file. Set together with `WEB_TLS_KEY_PATH` to serve HTTPS directly; relative paths are resolved from the project directory. |
 | `WEB_TLS_KEY_PATH` | No | Path to the TLS private key PEM file. Set together with `WEB_TLS_CERT_PATH` to serve HTTPS directly; relative paths are resolved from the project directory. |
 | `SESSION_SECRET` | For web | Random string used to encrypt session cookies. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
-| `STAFF_GUILD_ID` | For staff | The Discord guild where the bot resolves members' current role permissions for website access. The bot must be a member of this guild. |
+| `STAFF_GUILD_ID` | For staff | The Discord guild where the bot resolves members' current role permissions for website access and where Owner/Developer users manage reaction-role posts. The bot must be a member of this guild. |
 | `STAFF_IN_TRAINING_ROLE_ID` | No | Discord role ID for the Staff in Training website access level. |
 | `STAFF_ROLE_ID` | No | Discord role ID for the Staff website access level. |
 | `OWNER_ROLE_ID` | No | Discord role ID for the Owner website access level, including `/reload`. |
 | `DEVELOPER_USER_ID` | No | Discord user ID granted Developer access to all website capabilities and bot commands. This identity takes precedence over configured role levels. |
 | `MODERATION_LOG_CHANNEL_ID` | For moderation | Discord text-channel ID for the required moderation audit log. Kick, ban, mute, unmute, and chat-message deletion actions require a reason and an HTTP(S) evidence URL; the bot must be able to view, send messages, and embed links in this channel. If it is unset or unavailable, these actions are blocked. |
+| `SUGGESTION_LOG_CHANNEL_ID` | For suggestion declines | Discord text-channel ID where Owner/Developer decline decisions and their reasons are posted. The bot must be able to view the channel, send messages, and embed links. Declines are blocked when the channel cannot be reached. |
 | `BRIDGE_CHANNEL_ID` | For bridge | The Discord channel ID that serves as the bridge endpoint |
 | `BRIDGE_API_KEY` | For bridge | Shared secret key for authenticating game server API requests |
 | `GAME_WEBHOOK_URL` | No | Legacy HTTP relay URL, used only when no RCON server is configured |
@@ -161,6 +165,8 @@ In the Developer Portal under **Bot**, enable:
 
 Moderation actions initiated from the website or `/server kick` and `/server ban` require a reason and HTTP(S) evidence URL. The bot records a pending audit entry before performing an action, then marks the entry completed or failed.
 
+The suggestions board is available to linked members at `/suggestions`. Set `SUGGESTION_LOG_CHANNEL_ID` to a Discord text channel where the bot can send messages and embeds; only Owner/Developer declines are sent there. Suggestion submissions and progress updates remain on the website.
+
 The AI chatbot also needs **Message Content Intent**, **View Channel**, **Send Messages**, and **Read Message History** in its configured channel. If creature-profile sync is enabled, grant View Channel and Read Message History for the configured forum as well.
 
 ### AI Chatbot Plugin
@@ -196,6 +202,7 @@ After the bot is online in your Discord server:
 1. Set `STAFF_GUILD_ID`, the three staff-role ID variables, and `DEVELOPER_USER_ID` in `.env` (see [Staff System](Staff-System.md)). Developer access is assigned by user ID; otherwise the highest configured staff role wins.
 2. Ensure the bot is in that guild and has the Server Members intent enabled.
 3. Open the web dashboard and log in with Discord; website privileges follow each member's current combined role permissions.
+4. To publish reaction-role posts, grant the bot Manage Roles and ensure its highest role is above the roles you plan to offer. In each selected text channel, grant it View Channel, Send Messages, Read Message History, and Add Reactions. Owners and the Developer manage posts at `/admin/reaction-roles`.
 
 ## 7. Running as a Linux systemd service
 

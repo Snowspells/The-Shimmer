@@ -130,6 +130,55 @@ class DatabaseManager {
             )
         `);
 
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS suggestions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                creator_id TEXT NOT NULL,
+                creator_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'Suggested'
+                    CHECK (status IN ('Suggested', 'Under Review', 'Approved', 'In Progress', 'Completed', 'Declined')),
+                decline_reason TEXT,
+                declined_by TEXT,
+                declined_by_name TEXT,
+                declined_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_suggestions_status_updated
+                ON suggestions(status, updated_at DESC);
+            CREATE TABLE IF NOT EXISTS suggestion_activity (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                suggestion_id INTEGER NOT NULL,
+                actor_id TEXT NOT NULL,
+                actor_name TEXT NOT NULL,
+                action TEXT NOT NULL,
+                from_status TEXT,
+                to_status TEXT,
+                details TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (suggestion_id) REFERENCES suggestions(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_suggestion_activity_card
+                ON suggestion_activity(suggestion_id, id DESC);
+        `);
+
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS reaction_role_panels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                guild_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                message_id TEXT UNIQUE,
+                content TEXT NOT NULL,
+                mappings TEXT NOT NULL,
+                updated_by TEXT NOT NULL,
+                updated_by_name TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         // Chat bridge messages log
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS chat_bridge_messages (
@@ -544,6 +593,186 @@ class DatabaseManager {
             const { error } = require('./Console');
             error('Error deleting web session:', err);
         }
+    }
+
+    createSuggestion({ title, description, creatorId, creatorName }) {
+        const create = this.db.transaction(() => {
+            const result = this.db.prepare(`
+                INSERT INTO suggestions (title, description, creator_id, creator_name)
+                VALUES (?, ?, ?, ?)
+            `).run(title, description, creatorId, creatorName);
+            const suggestionId = Number(result.lastInsertRowid);
+            this.db.prepare(`
+                INSERT INTO suggestion_activity
+                    (suggestion_id, actor_id, actor_name, action, to_status)
+                VALUES (?, ?, ?, 'submitted', 'Suggested')
+            `).run(suggestionId, creatorId, creatorName);
+            return this.getSuggestion(suggestionId);
+        });
+        const suggestion = create();
+        this.checkpointWAL();
+        return suggestion;
+    }
+
+    createManagedSuggestion({ title, description, status, creatorId, creatorName }) {
+        const create = this.db.transaction(() => {
+            const result = this.db.prepare(`
+                INSERT INTO suggestions (title, description, creator_id, creator_name, status)
+                VALUES (?, ?, ?, ?, ?)
+            `).run(title, description, creatorId, creatorName, status);
+            const suggestionId = Number(result.lastInsertRowid);
+            this.db.prepare(`
+                INSERT INTO suggestion_activity
+                    (suggestion_id, actor_id, actor_name, action, to_status)
+                VALUES (?, ?, ?, 'created_by_developer', ?)
+            `).run(suggestionId, creatorId, creatorName, status);
+            return this.getSuggestion(suggestionId);
+        });
+        const suggestion = create();
+        this.checkpointWAL();
+        return suggestion;
+    }
+
+    getSuggestions() {
+        return this.db.prepare(
+            'SELECT * FROM suggestions ORDER BY updated_at DESC, id DESC'
+        ).all();
+    }
+
+    getSuggestion(suggestionId) {
+        return this.db.prepare('SELECT * FROM suggestions WHERE id = ?').get(suggestionId) || null;
+    }
+
+    getSuggestionActivity(suggestionId) {
+        return this.db.prepare(
+            'SELECT * FROM suggestion_activity WHERE suggestion_id = ? ORDER BY id DESC'
+        ).all(suggestionId);
+    }
+
+    getReactionRolePanels() {
+        return this.db.prepare(
+            'SELECT * FROM reaction_role_panels ORDER BY updated_at DESC, id DESC'
+        ).all();
+    }
+
+    getReactionRolePanel(panelId) {
+        return this.db.prepare(
+            'SELECT * FROM reaction_role_panels WHERE id = ?'
+        ).get(panelId) || null;
+    }
+
+    getReactionRolePanelByMessageId(messageId) {
+        return this.db.prepare(
+            'SELECT * FROM reaction_role_panels WHERE message_id = ?'
+        ).get(messageId) || null;
+    }
+
+    saveReactionRolePanel({
+        id, name, guildId, channelId, messageId, content, mappings, updatedBy, updatedByName
+    }) {
+        if (id) {
+            this.db.prepare(`
+                UPDATE reaction_role_panels
+                SET name = ?, guild_id = ?, channel_id = ?, message_id = ?, content = ?,
+                    mappings = ?, updated_by = ?, updated_by_name = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `).run(
+                name, guildId, channelId, messageId || null, content, JSON.stringify(mappings),
+                updatedBy, updatedByName, id
+            );
+            this.checkpointWAL();
+            return this.getReactionRolePanel(id);
+        }
+
+        const result = this.db.prepare(`
+            INSERT INTO reaction_role_panels
+                (name, guild_id, channel_id, message_id, content, mappings, updated_by, updated_by_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            name, guildId, channelId, messageId || null, content, JSON.stringify(mappings),
+            updatedBy, updatedByName
+        );
+        this.checkpointWAL();
+        return this.getReactionRolePanel(Number(result.lastInsertRowid));
+    }
+
+    deleteReactionRolePanel(panelId) {
+        const result = this.db.prepare(
+            'DELETE FROM reaction_role_panels WHERE id = ?'
+        ).run(panelId);
+        if (result.changes) this.checkpointWAL();
+        return result.changes > 0;
+    }
+
+    updateSuggestion(suggestionId, { title, description, status, actorId, actorName }) {
+        const update = this.db.transaction(() => {
+            const current = this.getSuggestion(suggestionId);
+            if (!current) return null;
+            this.db.prepare(`
+                UPDATE suggestions
+                SET title = ?, description = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                    , decline_reason = CASE WHEN ? = 'Declined' THEN decline_reason ELSE NULL END
+                    , declined_by = CASE WHEN ? = 'Declined' THEN declined_by ELSE NULL END
+                    , declined_by_name = CASE WHEN ? = 'Declined' THEN declined_by_name ELSE NULL END
+                    , declined_at = CASE WHEN ? = 'Declined' THEN declined_at ELSE NULL END
+                WHERE id = ?
+            `).run(title, description, status, status, status, status, status, suggestionId);
+            if (current.status !== status) {
+                this.db.prepare(`
+                    INSERT INTO suggestion_activity
+                        (suggestion_id, actor_id, actor_name, action, from_status, to_status)
+                    VALUES (?, ?, ?, 'status_changed', ?, ?)
+                `).run(suggestionId, actorId, actorName, current.status, status);
+            }
+            return this.getSuggestion(suggestionId);
+        });
+        const suggestion = update();
+        this.checkpointWAL();
+        return suggestion;
+    }
+
+    declineSuggestion(suggestionId, { reason, actorId, actorName }) {
+        const decline = this.db.transaction(() => {
+            const current = this.getSuggestion(suggestionId);
+            if (!current) return null;
+            if (current.status === 'Completed' || current.status === 'Declined') {
+                const err = new Error('Completed or already declined cards cannot be declined.');
+                err.code = 'SUGGESTION_CANNOT_BE_DECLINED';
+                throw err;
+            }
+
+            const result = this.db.prepare(`
+                UPDATE suggestions
+                SET status = 'Declined', decline_reason = ?, declined_by = ?,
+                    declined_by_name = ?, declined_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = ?
+            `).run(reason, actorId, actorName, suggestionId, current.status);
+            if (result.changes !== 1) {
+                const err = new Error('This card changed while you were declining it. Refresh and try again.');
+                err.code = 'SUGGESTION_CHANGED';
+                throw err;
+            }
+            this.db.prepare(`
+                INSERT INTO suggestion_activity
+                    (suggestion_id, actor_id, actor_name, action, from_status, to_status, details)
+                VALUES (?, ?, ?, 'declined', ?, 'Declined', ?)
+            `).run(suggestionId, actorId, actorName, current.status, reason);
+            return this.getSuggestion(suggestionId);
+        });
+        const suggestion = decline();
+        this.checkpointWAL();
+        return suggestion;
+    }
+
+    deleteSuggestion(suggestionId) {
+        const remove = this.db.transaction(() => {
+            this.db.prepare('DELETE FROM suggestion_activity WHERE suggestion_id = ?').run(suggestionId);
+            return this.db.prepare('DELETE FROM suggestions WHERE id = ?').run(suggestionId).changes > 0;
+        });
+        const deleted = remove();
+        if (deleted) this.checkpointWAL();
+        return deleted;
     }
 
     // Chat Bridge Methods

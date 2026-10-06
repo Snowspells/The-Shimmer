@@ -99,6 +99,186 @@ code {
     border-radius: 50%;
 }
 
+/* ===== Suggestions Board ===== */
+.suggestions-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.suggestions-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.suggestions-header p,
+.suggestion-author,
+.suggestion-card-meta,
+.suggestion-history li span,
+.suggestion-decline span {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.suggestion-notice {
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--success);
+    border-radius: 6px;
+    background: rgba(63, 185, 80, 0.1);
+}
+
+.suggestion-submit,
+.suggestion-manager {
+    max-width: 760px;
+}
+
+.suggestion-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.suggestion-form input,
+.suggestion-form textarea,
+.suggestion-form select {
+    width: 100%;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.suggestion-form textarea {
+    resize: vertical;
+}
+
+.suggestion-form button {
+    align-self: flex-start;
+    margin-top: 0.35rem;
+}
+
+.suggestion-manager summary,
+.suggestion-edit summary,
+.suggestion-decline-control summary,
+.suggestion-history summary {
+    cursor: pointer;
+}
+
+.suggestion-manager summary h2 {
+    display: inline;
+}
+
+.suggestion-board {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(230px, 1fr));
+    gap: 1rem;
+    align-items: start;
+    overflow-x: auto;
+    padding-bottom: 0.75rem;
+}
+
+.suggestion-column {
+    min-height: 220px;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+}
+
+.suggestion-column-header,
+.suggestion-card-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.suggestion-column-header {
+    margin-bottom: 0.75rem;
+}
+
+.suggestion-column-header h2 {
+    font-size: 0.95rem;
+}
+
+.suggestion-column-header span {
+    min-width: 1.5rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 1rem;
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    text-align: center;
+    font-size: 0.8rem;
+}
+
+.suggestion-empty {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.suggestion-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    margin-bottom: 0.75rem;
+    padding: 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--bg-card);
+    overflow-wrap: anywhere;
+}
+
+.suggestion-card h3 {
+    font-size: 1rem;
+}
+
+.suggestion-description,
+.suggestion-decline p {
+    white-space: pre-wrap;
+}
+
+.suggestion-decline {
+    padding: 0.65rem;
+    border-left: 3px solid var(--danger);
+    background: rgba(218, 54, 51, 0.1);
+}
+
+.suggestion-edit,
+.suggestion-decline-control,
+.suggestion-history {
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+}
+
+.suggestion-delete-form {
+    align-self: flex-start;
+}
+
+.suggestion-history ol {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    margin: 0.75rem 0 0 1.25rem;
+}
+
+.suggestion-history li p {
+    margin-top: 0.25rem;
+}
+
+@media (max-width: 700px) {
+    .suggestions-header {
+        align-items: flex-start;
+    }
+
+    .suggestion-board {
+        grid-template-columns: repeat(6, minmax(250px, 82vw));
+    }
+}
+
 /* ===== Buttons ===== */
 .btn {
     display: inline-block;
@@ -334,6 +514,80 @@ code {
 /* ===== Admin ===== */
 .admin-section {
     margin-bottom: 2rem;
+}
+
+.admin-section > .form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    padding: 1.25rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.form-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.form-grid input,
+.form-grid textarea,
+.form-grid select {
+    width: 100%;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.form-grid textarea {
+    resize: vertical;
+}
+
+.form-grid-full {
+    grid-column: 1 / -1;
+}
+
+.reaction-role-mapping {
+    display: grid;
+    grid-template-columns: minmax(8rem, 1fr) minmax(12rem, 2fr) auto;
+    gap: 0.75rem;
+    align-items: end;
+    margin-bottom: 0.75rem;
+}
+
+.button-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.button-row form {
+    margin: 0;
+}
+
+.notice {
+    margin-bottom: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.notice-success {
+    border-color: var(--success);
+    color: var(--success);
+}
+
+.notice-error {
+    border-color: var(--danger);
+    color: #ff7b72;
 }
 
 .admin-section h2 {
@@ -1034,6 +1288,18 @@ code {
 
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
+    .admin-section > .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .form-grid-full {
+        grid-column: auto;
+    }
+
+    .reaction-role-mapping {
+        grid-template-columns: 1fr;
+    }
+
     .navbar {
         flex-direction: column;
         gap: 1rem;

@@ -13,6 +13,7 @@
 - **Real-Time Chat Bridge** — A live chatroom on the website that bridges with Discord and the in-game Global channel, so community members can communicate from anywhere. Messages flow seamlessly between all three platforms in real time via WebSocket.
 - **Optional AI Chatbot Plugin** — An OpenAI-compatible local inference backend can power a conversational Discord assistant with persistent channel history and synchronized creature-forum profiles, sharing the existing bot client and database.
 - **Ticketing System** — Button-created private DM conversations, website replies on the Live Communication page, staff ticket management, and transcripts; legacy channel tickets remain read-only history.
+- **Suggestions & Updates Board** — Linked members submit and track ideas on a Trello-style progress board; Owners can decline with a reason, while the Developer manages all cards.
 - **Web Dashboard** — A companion website where players can view their linked account, chat with the community, browse tickets, and read transcripts — all behind Discord OAuth2 login.
 - **Staff Moderation Tools** — Three role-configured staff levels plus a Developer user-ID access level for ticket support, web management, moderation, and bot commands.
 - **Security** — Rate limiting on all endpoints, Helmet security headers, input sanitization (XSS protection), secure session management (httpOnly, SameSite cookies), and role-based access control with a separately configured Developer user ID.

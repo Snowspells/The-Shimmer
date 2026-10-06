@@ -12,6 +12,7 @@ Welcome to The Shimmer wiki. This is the documentation for **The Shimmer**, the 
 
 ### Web Dashboard
 - **[Web Dashboard](Web-Dashboard.md)** — Website pages, layout, navigation, and how users interact with the site.
+- **[Suggestions & Updates Board](Web-Dashboard.md#suggestions--updates-suggestions)** — Linked-member suggestions, progress statuses, and Owner/Developer controls.
 
 ### Administration
 - **[Staff System](Staff-System.md)** — Role-based access tiers (Support, Moderator, Administrator), how to configure them, and what each level can do.

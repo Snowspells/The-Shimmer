@@ -1,0 +1,131 @@
+<%- include('partials/header', { title: 'Suggestions & Updates', user }) %>
+
+<div class="suggestions-page">
+    <header class="suggestions-header">
+        <div>
+            <h1>Suggestions &amp; Updates</h1>
+            <p>Share ideas and follow their progress across the board.</p>
+        </div>
+    </header>
+
+    <% if (notice) { %>
+        <p class="suggestion-notice" role="status"><%= notice %></p>
+    <% } %>
+
+    <section class="suggestion-submit admin-section">
+        <h2>Submit a suggestion</h2>
+        <form method="post" action="/suggestions" class="suggestion-form">
+            <label for="suggestion-title">Title</label>
+            <input id="suggestion-title" name="title" type="text" maxlength="120" required>
+            <label for="suggestion-description">Details</label>
+            <textarea id="suggestion-description" name="description" rows="4" maxlength="3000" required></textarea>
+            <button type="submit" class="btn btn-primary">Submit Suggestion</button>
+        </form>
+    </section>
+
+    <% if (isDeveloper) { %>
+        <details class="admin-section suggestion-manager">
+            <summary><h2>Create managed board card</h2></summary>
+            <form method="post" action="/suggestions/cards" class="suggestion-form">
+                <label for="managed-title">Title</label>
+                <input id="managed-title" name="title" type="text" maxlength="120" required>
+                <label for="managed-description">Details</label>
+                <textarea id="managed-description" name="description" rows="4" maxlength="3000" required></textarea>
+                <label for="managed-status">Progress status</label>
+                <select id="managed-status" name="status" required>
+                    <% statuses.forEach(function(status) { %>
+                        <option value="<%= status %>"><%= status %></option>
+                    <% }); %>
+                </select>
+                <button type="submit" class="btn btn-primary">Create Card</button>
+            </form>
+        </details>
+    <% } %>
+
+    <div class="suggestion-board">
+        <% [...statuses, 'Declined'].forEach(function(status) { %>
+            <section class="suggestion-column">
+                <header class="suggestion-column-header">
+                    <h2><%= status %></h2>
+                    <span><%= cards.filter(card => card.status === status).length %></span>
+                </header>
+                <% const columnCards = cards.filter(card => card.status === status); %>
+                <% if (columnCards.length === 0) { %>
+                    <p class="suggestion-empty">No cards yet.</p>
+                <% } %>
+                <% columnCards.forEach(function(card) { %>
+                    <article class="suggestion-card">
+                        <div class="suggestion-card-meta">
+                            <span>Suggestion #<%= card.id %></span>
+                            <time datetime="<%= new Date(card.created_at).toISOString() %>"><%= new Date(card.created_at).toLocaleDateString() %></time>
+                        </div>
+                        <h3><%= card.title %></h3>
+                        <p class="suggestion-description"><%= card.description %></p>
+                        <p class="suggestion-author">Submitted by <%= card.creator_name %></p>
+
+                        <% if (card.status === 'Declined') { %>
+                            <div class="suggestion-decline">
+                                <strong>Decline reason</strong>
+                                <p><%= card.decline_reason %></p>
+                                <span>Declined by <%= card.declined_by_name %></span>
+                            </div>
+                        <% } %>
+
+                        <% if (isDeveloper) { %>
+                            <details class="suggestion-edit">
+                                <summary>Edit card</summary>
+                                <form method="post" action="/suggestions/cards/<%= card.id %>" class="suggestion-form">
+                                    <label for="edit-title-<%= card.id %>">Title</label>
+                                    <input id="edit-title-<%= card.id %>" name="title" type="text" maxlength="120" value="<%= card.title %>" required>
+                                    <label for="edit-description-<%= card.id %>">Details</label>
+                                    <textarea id="edit-description-<%= card.id %>" name="description" rows="4" maxlength="3000" required><%= card.description %></textarea>
+                                    <label for="edit-status-<%= card.id %>">Progress status</label>
+                                    <select id="edit-status-<%= card.id %>" name="status" required>
+                                        <% statuses.forEach(function(option) { %>
+                                            <option value="<%= option %>" <%= card.status === option ? 'selected' : '' %>><%= option %></option>
+                                        <% }); %>
+                                        <% if (card.status === 'Declined') { %>
+                                            <option value="Declined" selected>Declined</option>
+                                        <% } %>
+                                    </select>
+                                    <button type="submit" class="btn btn-sm btn-primary">Save Changes</button>
+                                </form>
+                            </details>
+                            <form method="post" action="/suggestions/cards/<%= card.id %>/delete" class="suggestion-delete-form" onsubmit="return confirm('Permanently delete this card and its progress history?')">
+                                <button type="submit" class="btn btn-sm btn-danger">Delete Card</button>
+                            </form>
+                        <% } %>
+
+                        <% if (isOwner && card.status !== 'Completed' && card.status !== 'Declined') { %>
+                            <details class="suggestion-decline-control">
+                                <summary>Decline suggestion</summary>
+                                <form method="post" action="/suggestions/cards/<%= card.id %>/decline" class="suggestion-form">
+                                    <label for="decline-reason-<%= card.id %>">Reason (also sent to the configured Discord log channel)</label>
+                                    <textarea id="decline-reason-<%= card.id %>" name="reason" rows="3" maxlength="1000" required></textarea>
+                                    <button type="submit" class="btn btn-sm btn-danger">Decline</button>
+                                </form>
+                            </details>
+                        <% } %>
+
+                        <% if (card.activity.length > 0) { %>
+                            <details class="suggestion-history">
+                                <summary>Progress history</summary>
+                                <ol>
+                                    <% card.activity.forEach(function(entry) { %>
+                                        <li>
+                                            <strong><%= entry.action === 'status_changed' ? `${entry.from_status} → ${entry.to_status}` : entry.action === 'declined' ? 'Declined' : entry.action === 'submitted' ? 'Submitted' : 'Created' %></strong>
+                                            <span>by <%= entry.actor_name %> · <%= new Date(entry.created_at).toLocaleString() %></span>
+                                            <% if (entry.details) { %><p><%= entry.details %></p><% } %>
+                                        </li>
+                                    <% }); %>
+                                </ol>
+                            </details>
+                        <% } %>
+                    </article>
+                <% }); %>
+            </section>
+        <% }); %>
+    </div>
+</div>
+
+<%- include('partials/footer') %>

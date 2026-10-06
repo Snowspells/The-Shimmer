@@ -1,0 +1,151 @@
+<%- include('partials/header', { title: 'Reaction Role Posts', user }) %>
+
+<section class="admin">
+    <div class="admin-header">
+        <div>
+            <h1>Reaction Role Posts</h1>
+            <p>Manage Discord posts where members can add or remove roles with reactions.</p>
+        </div>
+        <% if (editPanel) { %>
+            <a class="btn" href="/admin/reaction-roles">Create new post</a>
+        <% } %>
+    </div>
+
+    <% if (notice) { %><div class="notice notice-success"><%= notice %></div><% } %>
+    <% if (errorMessage) { %><div class="notice notice-error"><%= errorMessage %></div><% } %>
+
+    <div class="admin-section">
+        <h2><%= editPanel ? 'Edit Reaction Role Post' : 'Create Reaction Role Post' %></h2>
+        <form method="POST" action="/admin/reaction-roles" class="form-grid">
+            <% if (editPanel) { %><input type="hidden" name="id" value="<%= editPanel.id %>"><% } %>
+
+            <label>
+                Panel name
+                <input name="name" type="text" maxlength="100" required value="<%= editPanel?.name || '' %>" placeholder="Community roles">
+            </label>
+            <label>
+                Discord channel
+                <select name="channelId" required>
+                    <option value="">Select a channel</option>
+                    <% channels.forEach(function(channel) { %>
+                        <option value="<%= channel.id %>" <%= editPanel?.channel_id === channel.id ? 'selected' : '' %>>
+                            #<%= channel.name %>
+                        </option>
+                    <% }); %>
+                </select>
+            </label>
+            <label class="form-grid-full">
+                Post message
+                <textarea name="content" maxlength="2000" rows="5" required placeholder="Choose your roles by reacting below."><%= editPanel?.content || '' %></textarea>
+            </label>
+
+            <div class="form-grid-full">
+                <h3>Emoji-to-role mappings</h3>
+                <p class="text-muted">Add between 1 and 20 mappings. Enter a Unicode emoji or a custom Discord emoji such as <code>&lt;:sparkle:123456789012345678&gt;</code>.</p>
+                <div id="reaction-role-mappings">
+                    <% (editPanel?.mappingsList || [{ emoji: '', roleId: '' }]).forEach(function(mapping) { %>
+                        <div class="reaction-role-mapping">
+                            <label>
+                                Emoji
+                                <input name="emoji[]" type="text" maxlength="100" required value="<%= mapping.emoji %>" placeholder="🎨 or <:name:id>">
+                            </label>
+                            <label>
+                                Role
+                                <select name="roleId[]" required>
+                                    <option value="">Select a role</option>
+                                    <% roles.forEach(function(role) { %>
+                                        <option value="<%= role.id %>" <%= mapping.roleId === role.id ? 'selected' : '' %>>
+                                            <%= role.name %>
+                                        </option>
+                                    <% }); %>
+                                </select>
+                            </label>
+                            <button class="btn btn-sm mapping-remove" type="button" aria-label="Remove mapping">Remove</button>
+                        </div>
+                    <% }); %>
+                </div>
+                <button class="btn btn-sm" type="button" id="add-reaction-role-mapping">Add mapping</button>
+            </div>
+
+            <div class="form-grid-full button-row">
+                <% if (!editPanel?.message_id) { %>
+                    <button class="btn" type="submit" name="action" value="draft">Save draft</button>
+                <% } %>
+                <button class="btn btn-primary" type="submit" name="action" value="publish">
+                    <%= editPanel?.message_id ? 'Publish / Update Discord post' : 'Publish Discord post' %>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="admin-section">
+        <h2>Managed Posts</h2>
+        <% if (panels.length) { %>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>Name</th><th>Channel</th><th>Mappings</th><th>State</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        <% panels.forEach(function(panel) { %>
+                            <tr>
+                                <td><%= panel.name %></td>
+                                <td>#<%= panel.channelName %></td>
+                                <td><%= panel.mappingsList.length %></td>
+                                <td><%= panel.message_id ? 'Published' : 'Draft' %></td>
+                                <td>
+                                    <div class="button-row">
+                                        <a class="btn btn-sm" href="/admin/reaction-roles?edit=<%= panel.id %>">Edit</a>
+                                        <% if (panel.message_id) { %>
+                                            <a class="btn btn-sm" href="https://discord.com/channels/<%= panel.guild_id %>/<%= panel.channel_id %>/<%= panel.message_id %>" target="_blank" rel="noopener noreferrer">Open post</a>
+                                        <% } %>
+                                        <form method="POST" action="/admin/reaction-roles/<%= panel.id %>/delete" onsubmit="return confirm('Delete this configuration and its Discord post?')">
+                                            <button class="btn btn-sm" type="submit">Delete</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+        <% } else { %>
+            <div class="empty-state"><p>No reaction-role posts have been configured.</p></div>
+        <% } %>
+    </div>
+</section>
+
+<template id="reaction-role-mapping-template">
+    <div class="reaction-role-mapping">
+        <label>
+            Emoji
+            <input name="emoji[]" type="text" maxlength="100" required placeholder="🎨 or <:name:id>">
+        </label>
+        <label>
+            Role
+            <select name="roleId[]" required>
+                <option value="">Select a role</option>
+                <% roles.forEach(function(role) { %>
+                    <option value="<%= role.id %>"><%= role.name %></option>
+                <% }); %>
+            </select>
+        </label>
+        <button class="btn btn-sm mapping-remove" type="button" aria-label="Remove mapping">Remove</button>
+    </div>
+</template>
+
+<script>
+    const mappingsContainer = document.getElementById('reaction-role-mappings');
+    const mappingTemplate = document.getElementById('reaction-role-mapping-template');
+    document.getElementById('add-reaction-role-mapping').addEventListener('click', () => {
+        if (mappingsContainer.children.length >= 20) return;
+        mappingsContainer.append(mappingTemplate.content.cloneNode(true));
+    });
+    mappingsContainer.addEventListener('click', event => {
+        if (event.target.closest('.mapping-remove') && mappingsContainer.children.length > 1) {
+            event.target.closest('.reaction-role-mapping').remove();
+        }
+    });
+</script>
+
+<%- include('partials/footer') %>

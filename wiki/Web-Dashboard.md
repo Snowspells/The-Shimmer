@@ -83,6 +83,14 @@ The panel and its actions follow configured role IDs in `STAFF_GUILD_ID`, rechec
 
 In-game kicks and bans from the panel, as well as chat mute, unmute, and message-deletion endpoints, require a reason and HTTP(S) evidence URL. These actions are blocked unless `MODERATION_LOG_CHANNEL_ID` is configured and writable; each is recorded there with its outcome.
 
+### Reaction Role Posts (`/admin/reaction-roles`)
+
+*Requires Owner or Developer access.*
+
+Create, edit, publish, and delete Discord posts that let members assign or remove configured roles by adding or removing reactions. Each post has custom text, a channel in `STAFF_GUILD_ID`, and up to 20 Unicode or custom emoji-to-role mappings. Drafts can be saved before publishing; published posts can be updated from the panel. This feature manages Discord roles only and is separate from in-game behavioral or stat modifiers.
+
+The bot needs View Channel, Send Messages, Read Message History, and Add Reactions in the selected channel, plus Manage Roles in the server. Each assigned role must be below the bot's highest role and must not be managed by another integration. Removing a mapping stops future reaction changes for that emoji; it does not revoke roles members already received.
+
 **Recent Chat Bridge Messages:**
 - Visible to members with Manage Messages or Administrator; shows the 25 most recent bridged messages
 - Each entry shows source (Discord/Game), author name, message content, and timestamp
@@ -133,6 +141,14 @@ Chat moderation endpoints remain available to Staff and above; each moderation a
 
 ---
 
+### Suggestions & Updates (`/suggestions`)
+
+*Requires login and a linked Discord/game account.*
+
+The Trello-style progress board is visible to all linked members. Members can submit suggestions and follow every card through **Suggested**, **Under Review**, **Approved**, **In Progress**, and **Completed**. Owners and the configured Developer can decline a card with a required reason; each decision and reason is posted to `SUGGESTION_LOG_CHANNEL_ID`. The Developer can create, edit, move, and delete cards. Progress history stays on the website.
+
+---
+
 ### Error Page
 
 Displayed when:
@@ -156,6 +172,7 @@ The navigation bar appears on every page and includes:
 | **Mini Chat** | Logged in | Compact chat widget appears on authenticated pages |
 | **Tickets** | Logged in | Links to `/tickets` — view your tickets or all tickets (staff) |
 | **Staff Panel** | Staff only | Links to `/admin` (only shown if the user has a staff level) |
+| **Reaction Roles** | Owner and Developer | Links to `/admin/reaction-roles` to manage Discord reaction-role posts |
 | **Staff Badge** | Staff only | Color-coded badge showing the user's tier (e.g. "Moderator") |
 | **Avatar + Username** | Logged in | Shows the user's Discord avatar and username |
 | **Logout** | Logged in | Destroys the session and redirects to home |
