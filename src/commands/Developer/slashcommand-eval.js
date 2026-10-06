@@ -15,7 +15,7 @@ module.exports = new ApplicationCommand({
         }]
     },
     options: {
-        botOwner: true
+        botDevelopers: true
     },
     /**
      * 

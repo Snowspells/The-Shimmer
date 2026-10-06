@@ -189,7 +189,7 @@ app.get('/test/logout', (req, res) => {
 // ---- Real routes ----
 app.get('/', (req, res) => {
     res.render('index', {
-        botName: 'The Echo',
+        botName: 'The Shimmer',
         user: req.session.user || null
     });
 });

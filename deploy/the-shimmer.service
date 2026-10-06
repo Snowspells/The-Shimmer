@@ -1,0 +1,24 @@
+[Unit]
+Description=The Shimmer Discord bot and web dashboard
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=the-shimmer
+Group=the-shimmer
+WorkingDirectory=/opt/the-shimmer
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/the-shimmer/.env
+ExecStart=/usr/bin/node /opt/the-shimmer/src/index.js
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

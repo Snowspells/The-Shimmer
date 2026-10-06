@@ -4,6 +4,8 @@ const config = require("../../config");
 const MessageCommand = require("../../structure/MessageCommand");
 const { handleMessageCommandOptions, handleApplicationCommandOptions } = require("./CommandOptions");
 const ApplicationCommand = require("../../structure/ApplicationCommand");
+const DatabaseManager = require("../../utils/Database");
+const { resolveStaffLevel } = require("../../utils/StaffAccess");
 const { error } = require("../../utils/Console");
 
 class CommandsListener {
@@ -42,12 +44,22 @@ class CommandsListener {
 
             try {
                 if (command.options) {
-                    const commandContinue = await handleMessageCommandOptions(message, command.options, command.command);
+                    const commandContinue = await handleMessageCommandOptions(client, message, command.options, command.command);
 
                     if (!commandContinue) return;
                 }
 
-                if (command.command?.permissions && !message.member.permissions.has(PermissionsBitField.resolve(command.command.permissions))) {
+                const hasCommandPermissions = !command.command?.permissions ||
+                    message.member.permissions.has(PermissionsBitField.resolve(command.command.permissions));
+                let developerAccess = false;
+                if (!hasCommandPermissions) {
+                    try {
+                        developerAccess = await resolveStaffLevel(client, message.author.id) >= DatabaseManager.STAFF_LEVELS.DEVELOPER;
+                    } catch (err) {
+                        error(`Could not verify Developer access for ${message.author.id}:`, err);
+                    }
+                }
+                if (!hasCommandPermissions && !developerAccess) {
                     await message.reply({
                         content: config.messages.MISSING_PERMISSIONS,
                         flags: MessageFlags.Ephemeral
@@ -78,7 +90,7 @@ class CommandsListener {
 
             try {
                 if (command.options) {
-                    const commandContinue = await handleApplicationCommandOptions(interaction, command.options, command.command);
+                    const commandContinue = await handleApplicationCommandOptions(client, interaction, command.options, command.command);
 
                     if (!commandContinue) return;
                 }

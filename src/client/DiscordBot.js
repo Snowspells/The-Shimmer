@@ -7,6 +7,8 @@ const ComponentsHandler = require("./handler/ComponentsHandler");
 const ComponentsListener = require("./handler/ComponentsListener");
 const EventsHandler = require("./handler/EventsHandler");
 const DatabaseManager = require('../utils/Database');
+const AiChatbotPlugin = require('../plugins/ai-chatbot');
+const TicketManager = require('../utils/TicketManager');
 
 class DiscordBot extends Client {
     collection = {
@@ -23,16 +25,17 @@ class DiscordBot extends Client {
     rest_application_commands_array = [];
     login_attempts = 0;
     login_timestamp = 0;
+    statusRotationInterval = null;
     statusMessages = [
-        { name: 'The Echo Beckons', type: 4 },
-        { name: 'The Echo Nurtures', type: 4 },
-        { name: 'The Echoe Watches', type: 4 }
+        { name: 'The Shimmer Beckons', type: 4 },
+        { name: 'The Shimmer Nurtures', type: 4 },
+        { name: 'The Shimmer Watches', type: 4 }
     ];
 
     commands_handler = new CommandsHandler(this);
     components_handler = new ComponentsHandler(this);
     events_handler = new EventsHandler(this);
-    database = new DatabaseManager('./database.db');
+    database = new DatabaseManager();
 
     constructor() {
         super({
@@ -48,21 +51,32 @@ class DiscordBot extends Client {
                 activities: [{
                     name: 'keep this empty',
                     type: 4,
-                    state: 'The Echo Stirs'
+                    state: 'The Shimmer Stirs'
                 }]
             }
         });
         
         new CommandsListener(this);
         new ComponentsListener(this);
+        this.ticketManager = new TicketManager(this);
+        this.ticketManager.registerEvents();
+        this.aiChatbot = new AiChatbotPlugin(this);
     }
 
     startStatusRotation = () => {
         let index = 0;
-        setInterval(() => {
+        if (this.statusRotationInterval) clearInterval(this.statusRotationInterval);
+        this.statusRotationInterval = setInterval(() => {
             this.user.setPresence({ activities: [this.statusMessages[index]] });
             index = (index + 1) % this.statusMessages.length;
-        }, 4000);
+        }, 30*1000);
+    }
+
+    stopStatusRotation = () => {
+        if (this.statusRotationInterval) {
+            clearInterval(this.statusRotationInterval);
+            this.statusRotationInterval = null;
+        }
     }
 
     connect = async () => {

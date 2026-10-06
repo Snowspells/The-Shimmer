@@ -1,13 +1,13 @@
 # Chat Bridge
 
-The Echo provides a real-time chat bridge between **Discord**, the **in-game Global chat**, and the **website**. Messages sent on any platform are relayed to all others, keeping Shattered Echoes community members connected wherever they are.
+The Shimmer provides a real-time chat bridge between **Discord**, the **in-game Global chat**, and the **website**. Messages sent on any platform are relayed to all others, keeping Shattered Echoes community members connected wherever they are.
 
 ## How It Works
 
 ```
 ┌──────────┐                    ┌──────────┐                    ┌──────────┐
 │          │  POST /api/bridge  │          │  Send to channel   │          │
-│   Game   │ ──────────────────>│ The Echo │ ──────────────────>│ Discord  │
+│   Game   │ ──────────────────>│The Shimmer│ ──────────────────>│ Discord  │
 │  Server  │    /incoming       │   Bot    │                    │ Channel  │
 │          │                    │          │                    │          │
 │          │  GAME_WEBHOOK_URL  │          │  messageCreate     │          │
@@ -27,15 +27,15 @@ The Echo provides a real-time chat bridge between **Discord**, the **in-game Glo
 ### Game → Discord → Web (Inbound)
 
 1. A player sends a message in the game's Global chat
-2. The game server sends a `POST` request to The Echo's API at `/api/bridge/incoming`
-3. The Echo formats the message and sends it to the configured Discord channel
+2. The game server sends a `POST` request to The Shimmer's API at `/api/bridge/incoming`
+3. The Shimmer formats the message and sends it to the configured Discord channel
 4. The message is also broadcast to all connected website users via WebSocket
 5. The message appears in Discord as: **[Global] PlayerName:** message content
 
 ### Discord → Game + Web (Outbound)
 
 1. A user sends a message in the bridge Discord channel
-2. The Echo's `messageCreate` event listener detects the message
+2. The Shimmer's `messageCreate` event listener detects the message
 3. The bot sends a `POST` request to the game server's webhook URL
 4. The message is also broadcast to all connected website users via WebSocket
 
@@ -90,7 +90,7 @@ Connect to `ws://your-host/ws/chat` (or `wss://` for HTTPS). The connection requ
 
 ## Staff Moderation Tools
 
-Staff members with **Moderator** level or above see moderation controls in the web chat:
+Members with the configured **Staff** role or higher see moderation controls in the web chat:
 
 ### Mute a User
 - Hover over a message → click the mute icon
@@ -112,10 +112,12 @@ Staff members with **Moderator** level or above see moderation controls in the w
 
 | Route | Method | Access | Description |
 |-------|--------|--------|-------------|
-| `/chat/mute` | POST | Moderator+ | Mute a user (`userId`, optional `reason`, optional `duration` in minutes) |
-| `/chat/unmute` | POST | Moderator+ | Unmute a user (`userId`) |
-| `/chat/delete-message` | POST | Moderator+ | Delete a message (`messageId`) |
-| `/chat/mutes` | GET | Support+ | List all active mutes |
+| `/chat/mute` | POST | Staff or higher | Mute a user (`userId`, required `reason` and HTTP(S) `evidenceUrl`, optional `duration` in minutes) |
+| `/chat/unmute` | POST | Staff or higher | Unmute a user (`userId`, required `reason` and HTTP(S) `evidenceUrl`) |
+| `/chat/delete-message` | POST | Staff or higher | Delete a message (`messageId`, required `reason` and HTTP(S) `evidenceUrl`) |
+| `/chat/mutes` | GET | Staff or higher | List all active mutes |
+
+Every mute, unmute, chat-message deletion, in-game kick, and in-game ban is logged to the Discord text channel configured by `MODERATION_LOG_CHANNEL_ID`. The bot writes a pending record before carrying out the action and updates it with the outcome. If the channel is unavailable, the moderation action is blocked.
 
 ---
 
@@ -133,7 +135,7 @@ GAME_WEBHOOK_URL=http://your-game-server.com/api/chat
 |----------|-------------|
 | `BRIDGE_CHANNEL_ID` | The Discord channel ID that serves as the bridge endpoint. Messages in this channel are relayed to the game and web. |
 | `BRIDGE_API_KEY` | A shared secret key used to authenticate API requests from the game server. Choose a strong random string. |
-| `GAME_WEBHOOK_URL` | The URL on your game server that accepts incoming chat messages from Discord/web. The Echo sends `POST` requests here. |
+| `GAME_WEBHOOK_URL` | The URL on your game server that accepts incoming chat messages from Discord/web. The Shimmer sends `POST` requests here. |
 
 ### How to find a Channel ID
 

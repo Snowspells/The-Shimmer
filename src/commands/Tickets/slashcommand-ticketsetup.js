@@ -134,7 +134,7 @@ module.exports = new ApplicationCommand({
                     .setColor(0x6e56cf)
                     .setTitle(title)
                     .setDescription(description)
-                    .setFooter({ text: 'The Echo — Ticket System' });
+                    .setFooter({ text: 'The Shimmer — Ticket System' });
 
                 await channel.send({
                     embeds: [embed],

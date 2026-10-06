@@ -1,8 +1,8 @@
-# The Echo
+# The Shimmer
 
-*The Echo Beckons. The Echo Nurtures. The Echo Watches.*
+*The Shimmer Beckons. The Shimmer Nurtures. The Shimmer Watches.*
 
-**The Echo** is the community management platform for the **Shattered Echoes Fantasy Semi-Realism** Path of Titans community. It combines a Discord bot, a real-time web dashboard, and a cross-platform chat bridge into a single unified system — keeping the community connected whether members are in-game, on Discord, or browsing the website.
+**The Shimmer** is the community management platform for the **Shattered Echoes Fantasy Semi-Realism** Path of Titans community. It combines a Discord bot, a real-time web dashboard, and a cross-platform chat bridge into a single unified system — keeping the community connected whether members are in-game, on Discord, or browsing the website.
 
 > **Note:** This project is built exclusively for the Shattered Echoes community. There are no plans to generalize or extend it beyond the scope of this community at this time.
 
@@ -11,17 +11,18 @@
 - **Account Linking** — Players connect their Discord ID to their in-game account (AGID), with optional in-game verification via RCON whisper, enabling cross-platform tracking of currency (marks), inventory, and activity.
 - **Path of Titans Integration** — Direct RCON control of a Path of Titans dedicated server (announce, kick, ban, heal, teleport) plus ingestion of the server's Discord webhook for in-game chat, join/leave events, and real AGID capture. See [Path of Titans Integration](wiki/Path-of-Titans-Integration.md).
 - **Real-Time Chat Bridge** — A live chatroom on the website that bridges with Discord and the in-game Global channel, so community members can communicate from anywhere. Messages flow seamlessly between all three platforms in real time via WebSocket.
-- **Ticketing System** — Private support channels in Discord with per-guild configuration, staff claiming, HTML transcript generation on close, and a web interface for browsing tickets and reading transcripts.
+- **Optional AI Chatbot Plugin** — An OpenAI-compatible local inference backend can power a conversational Discord assistant with persistent channel history and synchronized creature-forum profiles, sharing the existing bot client and database.
+- **Ticketing System** — Button-created private DM conversations, website replies on the Live Communication page, staff ticket management, and transcripts; legacy channel tickets remain read-only history.
 - **Web Dashboard** — A companion website where players can view their linked account, chat with the community, browse tickets, and read transcripts — all behind Discord OAuth2 login.
-- **Staff Moderation Tools** — A tiered staff system (Support, Moderator, Administrator) driven by Discord roles, with web-based moderation: mute/unmute users in chat, delete messages, manage user accounts, and monitor community activity.
-- **Security** — Rate limiting on all endpoints, Helmet security headers, input sanitization (XSS protection), secure session management (httpOnly, SameSite cookies), and role-based access control on all staff operations.
+- **Staff Moderation Tools** — Three role-configured staff levels plus a Developer user-ID access level for ticket support, web management, moderation, and bot commands.
+- **Security** — Rate limiting on all endpoints, Helmet security headers, input sanitization (XSS protection), secure session management (httpOnly, SameSite cookies), and role-based access control with a separately configured Developer user ID.
 
 ## Quick Start
 
 1. **Clone & install:**
    ```bash
-   git clone https://github.com/Snowspells/The-Echo.git
-   cd The-Echo
+   git clone https://github.com/Snowspells/The-Echo.git The-Shimmer
+   cd The-Shimmer
    npm install
    ```
 
@@ -34,6 +35,8 @@
    npm start
    ```
    The Discord bot, web dashboard, and WebSocket chat server start together.
+
+   To run The Shimmer persistently as a Linux service, see [Running as a systemd service](wiki/Setup-and-Configuration.md#running-as-a-linux-systemd-service).
 
 ## Documentation
 
@@ -69,7 +72,7 @@ Account security is a priority for this project. The following measures are in p
 - **Helmet** — Security headers including Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, and more.
 - **XSS Protection** — All user input is sanitized before storage and rendering. Chat messages are filtered through the xss library.
 - **Session Security** — httpOnly cookies, SameSite=Lax, configurable secure flag, 24-hour session expiry, custom cookie name.
-- **Role-Based Access** — Three-tier staff system enforced on both web routes and WebSocket connections. Moderation tools require Moderator level or above.
+- **Role-Based Access** — Staff in Training, Staff, Owner, and configured Developer access levels enforced on web routes, bot commands, and WebSocket connections. Moderation tools require Staff or above.
 - **Request Size Limits** — JSON and URL-encoded body parsing limited to 1MB, WebSocket messages limited to 10KB.
 - **WebSocket Authentication** — WebSocket connections require a valid session. Unauthenticated connections are immediately closed.
 
@@ -94,6 +97,8 @@ src/
   utils/
     Console.js                 # Logging system with configurable levels
     Database.js                # SQLite database manager
+  plugins/
+    ai-chatbot.js              # Optional AI assistant and creature-profile sync
   web/
     server.js                  # Express + WebSocket server
     middleware/                # Auth & staff access middleware

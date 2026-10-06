@@ -2,6 +2,8 @@ const { Message, MessageFlags } = require("discord.js");
 const MessageCommand = require("../../structure/MessageCommand");
 const ApplicationCommand = require("../../structure/ApplicationCommand");
 const config = require("../../config");
+const DatabaseManager = require("../../utils/Database");
+const { resolveStaffLevel } = require("../../utils/StaffAccess");
 
 const application_commands_cooldown = new Map();
 const message_commands_cooldown = new Map();
@@ -13,31 +15,37 @@ const message_commands_cooldown = new Map();
  * @param {ApplicationCommand['data']['command']} command 
  * @returns {boolean}
  */
-const handleApplicationCommandOptions = async (interaction, options, command) => {
-    if (options.botOwner) {
-        if (interaction.user.id !== config.users.ownerId) {
-            await interaction.reply({
-                content: config.messages.NOT_BOT_OWNER,
-                flags: MessageFlags.Ephemeral
-            });
-
-            return false;
-        }
+const hasRequiredStaffLevel = async (client, userId, minimumLevel) => {
+    try {
+        return await resolveStaffLevel(client, userId) >= minimumLevel;
+    } catch (err) {
+        const { error } = require("../../utils/Console");
+        error(`Could not verify configured staff role for ${userId}:`, err);
+        return false;
     }
+};
 
-    if (options.botDevelopers) {
-        if (config.users?.developers?.length > 0 && !config.users?.developers?.includes(interaction.user.id)) {
-            await interaction.reply({
-                content: config.messages.NOT_BOT_DEVELOPER,
-                flags: MessageFlags.Ephemeral
-            });
-
-            return false;
-        }
+const handleApplicationCommandOptions = async (client, interaction, options, command) => {
+    const minimumStaffLevel = options.requiredStaffLevel ||
+        (options.botDevelopers ? DatabaseManager.STAFF_LEVELS.DEVELOPER
+            : options.botOwner ? DatabaseManager.STAFF_LEVELS.OWNER : null);
+    if (minimumStaffLevel !== null &&
+        !(await hasRequiredStaffLevel(client, interaction.user.id, minimumStaffLevel))) {
+        const isDeveloperGate = minimumStaffLevel >= DatabaseManager.STAFF_LEVELS.DEVELOPER;
+        await interaction.reply({
+            content: isDeveloperGate ? config.messages.NOT_BOT_DEVELOPER : config.messages.NOT_BOT_OWNER,
+            flags: MessageFlags.Ephemeral
+        });
+        return false;
     }
 
     if (options.guildOwner) {
-        if (interaction.user.id !== interaction.guild.ownerId) {
+        const isDeveloper = await hasRequiredStaffLevel(
+            client,
+            interaction.user.id,
+            DatabaseManager.STAFF_LEVELS.DEVELOPER
+        );
+        if (interaction.user.id !== interaction.guild.ownerId && !isDeveloper) {
             await interaction.reply({
                 content: config.messages.NOT_GUILD_OWNER,
                 flags: MessageFlags.Ephemeral
@@ -97,29 +105,27 @@ const handleApplicationCommandOptions = async (interaction, options, command) =>
  * @param {MessageCommand['data']['command']} command 
  * @returns {boolean}
  */
-const handleMessageCommandOptions = async (message, options, command) => {
-    if (options.botOwner) {
-        if (message.author.id !== config.users.ownerId) {
-            await message.reply({
-                content: config.messages.NOT_BOT_OWNER
-            });
-
-            return false;
-        }
-    }
-
-    if (options.botDevelopers) {
-        if (config.users?.developers?.length > 0 && !config.users?.developers?.includes(message.author.id)) {
-            await message.reply({
-                content: config.messages.NOT_BOT_DEVELOPER
-            });
-
-            return false;
-        }
+const handleMessageCommandOptions = async (client, message, options, command) => {
+    const minimumStaffLevel = options.requiredStaffLevel ||
+        (options.botDevelopers ? DatabaseManager.STAFF_LEVELS.DEVELOPER
+            : options.botOwner ? DatabaseManager.STAFF_LEVELS.OWNER : null);
+    if (minimumStaffLevel !== null &&
+        !(await hasRequiredStaffLevel(client, message.author.id, minimumStaffLevel))) {
+        await message.reply({
+            content: minimumStaffLevel >= DatabaseManager.STAFF_LEVELS.DEVELOPER
+                ? config.messages.NOT_BOT_DEVELOPER
+                : config.messages.NOT_BOT_OWNER
+        });
+        return false;
     }
 
     if (options.guildOwner) {
-        if (message.author.id !== message.guild.ownerId) {
+        const isDeveloper = await hasRequiredStaffLevel(
+            client,
+            message.author.id,
+            DatabaseManager.STAFF_LEVELS.DEVELOPER
+        );
+        if (message.author.id !== message.guild.ownerId && !isDeveloper) {
             await message.reply({
                 content: config.messages.NOT_GUILD_OWNER
             });

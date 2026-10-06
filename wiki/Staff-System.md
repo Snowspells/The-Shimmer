@@ -1,153 +1,33 @@
-# Staff System
+# Staff Access
 
-The Echo uses a **role-based access control** system driven by Discord roles. Staff access is organized into three tiers, each with increasing permissions on both the web dashboard and (in future) in-game tools.
+Website and restricted bot-command access are determined by a member's current roles in `STAFF_GUILD_ID`, except Developer access, which is assigned directly by Discord user ID. Configure the three staff roles and `DEVELOPER_USER_ID` in `.env`. The bot must be a member of that guild, and the Server Members Intent must be enabled. Protected website actions and restricted commands resolve current access rather than trusting the state stored at login.
 
-## Staff Tiers
+## Role levels
 
-| Level | Name | Badge Color | Description |
-|-------|------|-------------|-------------|
-| 1 | **Support** | Blue | View-only access to the staff panel. Can see linked users, stats, and chat bridge logs but cannot make changes. |
-| 2 | **Moderator** | Amber | Everything in Support, plus the ability to edit user data (AGID and marks). |
-| 3 | **Administrator** | Red | Full access. Everything in Moderator, plus the ability to delete user records. |
+If a member has more than one configured role, only the highest level applies:
 
-The bot owner (defined in `config.users.ownerId`) always has Administrator access regardless of their Discord roles — this ensures you can never be locked out.
+| Level | Environment variable | Access |
+|---|---|---|
+| Member | — | Their own account data, inventory, marks, and tickets |
+| Staff in Training | `STAFF_IN_TRAINING_ROLE_ID` | Member access plus view, respond to, and close other members' tickets |
+| Staff | `STAFF_ROLE_ID` | Staff in Training access plus web-chat moderation, RCON controls, and linked-member/account management |
+| Owner | `OWNER_ROLE_ID` | Staff access plus the existing `/reload` command |
+| Developer | `DEVELOPER_USER_ID` | All website capabilities and all bot commands; this specific user ID takes precedence over role-based levels |
 
----
-
-## How It Works
-
-### 1. Map Discord roles to staff levels
-
-Use the `/staffrole` command in Discord to map your server's roles to staff tiers:
-
-```
-/staffrole assign @Support-Team 1     → Support (view-only)
-/staffrole assign @Moderators 2       → Moderator (edit users)
-/staffrole assign @Admins 3           → Administrator (full access)
-```
-
-These mappings are stored in the database and persist across bot restarts.
-
-### 2. User logs into the web dashboard
-
-When a user logs in with Discord OAuth2, The Echo:
-
-1. Fetches the user's profile from Discord
-2. Fetches the user's roles from the guild specified by `STAFF_GUILD_ID`
-3. Looks up each of the user's Discord roles in the `staff_roles` database table
-4. Assigns the **highest** matching staff level to the user's session
-
-For example, if a user has both a Support role (level 1) and a Moderator role (level 2), they'll be granted Moderator access.
-
-### 3. Access is enforced on every request
-
-The web middleware checks the user's staff level before allowing access to protected routes:
-
-| Route | Minimum Level |
-|-------|---------------|
-| `GET /admin` | Support (1) |
-| `GET /chat/mutes` | Support (1) |
-| `POST /admin/users/:id/update` | Moderator (2) |
-| `POST /admin/users/:id/delete` | Administrator (3) |
-| `POST /chat/mute` | Moderator (2) |
-| `POST /chat/unmute` | Moderator (2) |
-| `POST /chat/delete-message` | Moderator (2) |
-
----
-
-## Managing Staff Roles
-
-All `/staffrole` subcommands are restricted to the **bot owner** only.
-
-### Assign a role
-
-```
-/staffrole assign <role> <level>
-```
-
-Maps a Discord role to a staff access level. If the role was already assigned, it updates the level.
-
-**Level choices:**
-- `Support (view-only)` — Level 1
-- `Moderator (edit users)` — Level 2
-- `Administrator (full access)` — Level 3
-
-### Remove a role
-
-```
-/staffrole remove <role>
-```
-
-Removes the role from staff access. Users who only had this role will lose staff access on their next login.
-
-### List all roles
-
-```
-/staffrole list
-```
-
-Shows all configured staff roles for the current server, including the role name and assigned level.
-
----
+The `/reload` command reloads command definitions; it does not dynamically unload and reload arbitrary runtime plugins. `botOwner`-restricted setup commands are available to Owner and the configured Developer. Commands explicitly restricted to Developers require the configured Developer user ID.
 
 ## Configuration
 
-### Required Environment Variable
-
 ```env
 STAFF_GUILD_ID=your_discord_server_id
+STAFF_IN_TRAINING_ROLE_ID=your_staff_in_training_role_id
+STAFF_ROLE_ID=your_staff_role_id
+OWNER_ROLE_ID=your_owner_role_id
+DEVELOPER_USER_ID=your_discord_user_id
 ```
 
-This tells The Echo which Discord guild's roles to check when a user logs into the web dashboard. Without this, role-based staff detection is disabled (only the bot owner will have staff access).
+To copy an ID, enable Developer Mode in Discord, right-click the server or staff role, and select **Copy ID**. For `DEVELOPER_USER_ID`, right-click the Developer's Discord user profile and select **Copy User ID**. Empty role IDs grant no access at that level. If Discord membership cannot be verified for a role-protected action, access is denied and the failure is logged.
 
-### How to find your Guild ID
+## Legacy `/staffrole` command
 
-1. In Discord, go to **User Settings → Advanced → Developer Mode** (enable it)
-2. Right-click your server name → **Copy Server ID**
-
----
-
-## Web Dashboard Behavior by Tier
-
-### Support (Level 1)
-- ✓ View the Staff Panel
-- ✓ See stats (linked users, servers, uptime)
-- ✓ See the linked users table (read-only — no edit fields)
-- ✓ See staff roles configuration
-- ✓ See recent chat bridge messages
-- ✓ View active chat mutes
-- ✗ Cannot edit user data
-- ✗ Cannot delete users
-- ✗ Cannot mute/unmute users or delete messages
-
-### Moderator (Level 2)
-- ✓ Everything in Support
-- ✓ Edit user AGID (inline text field)
-- ✓ Edit user marks (inline number field)
-- ✓ Save changes to user records
-- ✓ Mute/unmute users in web chat
-- ✓ Delete messages in web chat
-- ✗ Cannot delete users
-
-### Administrator (Level 3)
-- ✓ Everything in Moderator
-- ✓ Delete user records (with confirmation prompt)
-
-### Bot Owner
-- ✓ Everything in Administrator (always, regardless of Discord roles)
-- ✓ The `/staffrole` command in Discord
-
----
-
-## Important Notes
-
-- **Users must re-login** after their Discord roles change for the new staff level to take effect. The staff level is determined at login time and cached in the session.
-- **Multiple roles are supported.** If a user has several roles mapped to different levels, they get the highest level.
-- **Staff roles are per-guild.** Each Discord server can have its own set of role mappings, but only the guild specified by `STAFF_GUILD_ID` is checked during web login.
-- **Removing a role mapping** does not immediately revoke access for users who are already logged in. Their access will be updated on their next login.
-
----
-
-## Future Plans
-
-The three-tier system is designed to be extended with additional permissions for in-game tools and moderation features as development progresses.
+The `/staffrole` command only edits the legacy `staff_roles` database table; these records no longer grant website or bot-command access. Configure active access with the environment variables above.

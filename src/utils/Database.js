@@ -1,9 +1,14 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const crypto = require('crypto');
+const { resolveDatabasePath } = require('./DatabasePaths');
 
 class DatabaseManager {
-    constructor(filePath = './database.db') {
+    constructor(filePath = resolveDatabasePath(
+        'application',
+        'database.db',
+        path.resolve(__dirname, '../../database.db')
+    )) {
         this.db = new Database(filePath);
         this.db.pragma('journal_mode = WAL'); // Enable write-ahead logging for better concurrency
         this.initializeTables();
@@ -74,6 +79,31 @@ class DatabaseManager {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 closed_at DATETIME
             )
+        `);
+        const ticketColumns = new Set(
+            this.db.prepare('PRAGMA table_info(tickets)').all().map(column => column.name)
+        );
+        if (!ticketColumns.has('ticket_mode')) {
+            this.db.exec("ALTER TABLE tickets ADD COLUMN ticket_mode TEXT NOT NULL DEFAULT 'channel'");
+        }
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS ticket_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_id INTEGER NOT NULL,
+                author_id TEXT NOT NULL,
+                author_name TEXT NOT NULL,
+                author_type TEXT NOT NULL CHECK (author_type IN ('user', 'staff', 'system')),
+                content TEXT NOT NULL,
+                discord_message_id TEXT UNIQUE,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (ticket_id) REFERENCES tickets(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket_id ON ticket_messages(ticket_id, id);
+        `);
+        this.db.exec(`
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_one_open_dm_ticket_per_user
+            ON tickets(creator_id)
+            WHERE ticket_mode = 'dm' AND status = 'open'
         `);
 
         // Ticket settings per guild
@@ -189,6 +219,7 @@ class DatabaseManager {
                 token TEXT PRIMARY KEY,
                 discord_id TEXT NOT NULL,
                 username TEXT NOT NULL,
+                global_name TEXT,
                 discriminator TEXT,
                 avatar TEXT,
                 is_staff INTEGER DEFAULT 0,
@@ -201,6 +232,12 @@ class DatabaseManager {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        const clientTokenColumns = new Set(
+            this.db.prepare('PRAGMA table_info(client_tokens)').all().map(column => column.name)
+        );
+        if (!clientTokenColumns.has('global_name')) {
+            this.db.exec('ALTER TABLE client_tokens ADD COLUMN global_name TEXT');
+        }
 
         // One-time auth codes (short-lived, exchanged by the standalone client for a token)
         this.db.exec(`
@@ -382,8 +419,23 @@ class DatabaseManager {
 
     // Staff Role Methods
     // Levels: 1 = Support, 2 = Moderator, 3 = Administrator
-    static STAFF_LEVELS = { SUPPORT: 1, MODERATOR: 2, ADMINISTRATOR: 3, OWNER: 4 };
-    static STAFF_LABELS = { 0: 'Member', 1: 'Support', 2: 'Moderator', 3: 'Administrator', 4: 'Owner' };
+    static STAFF_LEVELS = {
+        MEMBER: 0,
+        STAFF_IN_TRAINING: 1,
+        SUPPORT: 1,
+        STAFF: 2,
+        MODERATOR: 2,
+        OWNER: 3,
+        DEVELOPER: 4,
+        ADMINISTRATOR: 4
+    };
+    static STAFF_LABELS = {
+        0: 'Member',
+        1: 'Staff in Training',
+        2: 'Staff',
+        3: 'Owner',
+        4: 'Developer'
+    };
 
     setStaffRole(roleId, guildId, level) {
         try {
@@ -590,6 +642,33 @@ class DatabaseManager {
         }
     }
 
+    createDmTicket(guildId, creatorId, creatorName, subject) {
+        try {
+            const result = this.db.prepare(
+                "INSERT INTO tickets (guild_id, channel_id, creator_id, creator_name, subject, ticket_mode) VALUES (?, NULL, ?, ?, ?, 'dm')"
+            ).run(guildId, creatorId, creatorName, subject || 'Support request');
+            this.checkpointWAL();
+            return result.lastInsertRowid;
+        } catch (err) {
+            const { error } = require('./Console');
+            error('Error creating DM ticket:', err);
+            return null;
+        }
+    }
+
+    deleteDmTicket(ticketId) {
+        try {
+            this.db.transaction(() => {
+                this.db.prepare('DELETE FROM ticket_messages WHERE ticket_id = ?').run(ticketId);
+                this.db.prepare("DELETE FROM tickets WHERE id = ? AND ticket_mode = 'dm' AND status = 'open'").run(ticketId);
+            })();
+            this.checkpointWAL();
+        } catch (err) {
+            const { error } = require('./Console');
+            error('Error deleting failed DM ticket:', err);
+        }
+    }
+
     getTicket(ticketId) {
         try {
             return this.db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId) || null;
@@ -607,6 +686,58 @@ class DatabaseManager {
             const { error } = require('./Console');
             error('Error getting ticket by channel:', err);
             return null;
+        }
+    }
+
+    getOpenDmTicketByUser(creatorId) {
+        try {
+            return this.db.prepare(
+                "SELECT * FROM tickets WHERE creator_id = ? AND ticket_mode = 'dm' AND status = 'open' ORDER BY created_at DESC LIMIT 1"
+            ).get(creatorId) || null;
+        } catch (err) {
+            const { error } = require('./Console');
+            error('Error getting open DM ticket:', err);
+            return null;
+        }
+    }
+
+    getOpenDmTicketById(ticketId) {
+        try {
+            return this.db.prepare(
+                "SELECT * FROM tickets WHERE id = ? AND ticket_mode = 'dm' AND status = 'open'"
+            ).get(ticketId) || null;
+        } catch (err) {
+            const { error } = require('./Console');
+            error('Error getting open DM ticket by ID:', err);
+            return null;
+        }
+    }
+
+    addTicketMessage(ticketId, authorId, authorName, authorType, content, discordMessageId = null) {
+        try {
+            const result = this.db.prepare(`
+                INSERT INTO ticket_messages
+                    (ticket_id, author_id, author_name, author_type, content, discord_message_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `).run(ticketId, authorId, authorName, authorType, content, discordMessageId);
+            this.checkpointWAL();
+            return result.lastInsertRowid;
+        } catch (err) {
+            const { error } = require('./Console');
+            error('Error adding ticket message:', err);
+            return null;
+        }
+    }
+
+    getTicketMessages(ticketId, afterId = 0) {
+        try {
+            return this.db.prepare(
+                'SELECT * FROM ticket_messages WHERE ticket_id = ? AND id > ? ORDER BY id ASC'
+            ).all(ticketId, afterId);
+        } catch (err) {
+            const { error } = require('./Console');
+            error('Error getting ticket messages:', err);
+            return [];
         }
     }
 
@@ -633,8 +764,11 @@ class DatabaseManager {
         }
     }
 
-    getAllTickets(limit = 100) {
+    getAllTickets(limit = null) {
         try {
+            if (limit === null) {
+                return this.db.prepare('SELECT * FROM tickets ORDER BY created_at DESC').all();
+            }
             return this.db.prepare('SELECT * FROM tickets ORDER BY created_at DESC LIMIT ?').all(limit);
         } catch (err) {
             const { error } = require('./Console');
@@ -665,13 +799,15 @@ class DatabaseManager {
 
     closeTicket(ticketId, closedBy, closedByName) {
         try {
-            this.db.prepare(
+            const result = this.db.prepare(
                 'UPDATE tickets SET status = ?, closed_by = ?, closed_by_name = ?, closed_at = CURRENT_TIMESTAMP WHERE id = ?'
             ).run('closed', closedBy, closedByName, ticketId);
             this.checkpointWAL();
+            return result.changes > 0;
         } catch (err) {
             const { error } = require('./Console');
             error('Error closing ticket:', err);
+            return false;
         }
     }
 
@@ -730,13 +866,15 @@ class DatabaseManager {
     // Chat Mute Methods
     setChatMute(userId, mutedBy, mutedByName, reason, expiresAt) {
         try {
-            this.db.prepare(
+            const result = this.db.prepare(
                 'INSERT OR REPLACE INTO chat_mutes (user_id, muted_by, muted_by_name, reason, expires_at) VALUES (?, ?, ?, ?, ?)'
             ).run(userId, mutedBy, mutedByName, reason || null, expiresAt || null);
             this.checkpointWAL();
+            return result.changes > 0;
         } catch (err) {
             const { error } = require('./Console');
             error('Error setting chat mute:', err);
+            return false;
         }
     }
 
@@ -752,11 +890,13 @@ class DatabaseManager {
 
     removeChatMute(userId) {
         try {
-            this.db.prepare('DELETE FROM chat_mutes WHERE user_id = ?').run(userId);
+            const result = this.db.prepare('DELETE FROM chat_mutes WHERE user_id = ?').run(userId);
             this.checkpointWAL();
+            return result.changes > 0;
         } catch (err) {
             const { error } = require('./Console');
             error('Error removing chat mute:', err);
+            return false;
         }
     }
 
@@ -772,11 +912,13 @@ class DatabaseManager {
 
     deleteBridgeMessage(messageId) {
         try {
-            this.db.prepare('DELETE FROM chat_bridge_messages WHERE id = ?').run(messageId);
+            const result = this.db.prepare('DELETE FROM chat_bridge_messages WHERE id = ?').run(messageId);
             this.checkpointWAL();
+            return result.changes > 0;
         } catch (err) {
             const { error } = require('./Console');
             error('Error deleting bridge message:', err);
+            return false;
         }
     }
 
@@ -938,12 +1080,13 @@ class DatabaseManager {
         try {
             this.db.prepare(`
                 INSERT OR REPLACE INTO client_tokens
-                (token, discord_id, username, discriminator, avatar, is_staff, staff_level, staff_label, roles, refresh_token, discord_access_token, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (token, discord_id, username, global_name, discriminator, avatar, is_staff, staff_level, staff_label, roles, refresh_token, discord_access_token, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
                 DatabaseManager.hashToken(token),
                 data.discord_id,
                 data.username,
+                data.global_name || null,
                 data.discriminator || null,
                 data.avatar || null,
                 data.is_staff ? 1 : 0,

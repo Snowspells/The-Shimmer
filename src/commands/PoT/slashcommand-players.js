@@ -1,12 +1,12 @@
-const { ChatInputCommandInteraction, ApplicationCommandOptionType, PermissionFlagsBits, MessageFlags } = require("discord.js");
+const { ChatInputCommandInteraction, ApplicationCommandOptionType, MessageFlags } = require("discord.js");
 const ApplicationCommand = require("../../structure/ApplicationCommand");
+const DatabaseManager = require("../../utils/Database");
 
 module.exports = new ApplicationCommand({
     command: {
         name: 'players',
         description: 'List players currently online on the Path of Titans server (via RCON)',
         type: 1,
-        default_member_permissions: PermissionFlagsBits.ManageMessages.toString(),
         options: [{
             name: 'server',
             description: 'Which server to query (defaults to the primary server)',
@@ -15,7 +15,8 @@ module.exports = new ApplicationCommand({
         }]
     },
     options: {
-        cooldown: 5000
+        cooldown: 5000,
+        requiredStaffLevel: DatabaseManager.STAFF_LEVELS.STAFF
     },
 
     /**

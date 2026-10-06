@@ -3,21 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= typeof title !== 'undefined' ? title + ' - ' : '' %>The Echo</title>
+    <title><%= typeof title !== 'undefined' ? title + ' - ' : '' %>The Shimmer</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
     <nav class="navbar">
         <div class="nav-brand">
-            <a href="/">The Echo</a>
+            <a href="/">The Shimmer</a>
         </div>
         <div class="nav-links">
             <a href="/">Home</a>
             <% if (user) { %>
-                <a href="/dashboard">Dashboard</a>
-                <a href="/chat">Chat</a>
-                <a href="/tickets">Tickets</a>
-                <% if (user.isStaff) { %>
+            <a href="/dashboard">Dashboard</a>
+            <a href="/tickets">Live Communication</a>
+                <% if (user.webPermissions?.canViewStaffPanel) { %>
                     <a href="/admin">Staff Panel</a>
                     <span class="staff-badge staff-level-<%= user.staffLevel %>"><%= user.staffLabel %></span>
                 <% } %>
@@ -26,7 +25,7 @@
                         ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=32`
                         : `https://cdn.discordapp.com/embed/avatars/${parseInt(user.id) % 5}.png` %>"
                         alt="avatar" class="nav-avatar">
-                    <span><%= user.username %></span>
+                    <span><%= user.displayName || user.username %></span>
                     <a href="/auth/logout" class="btn btn-sm">Logout</a>
                 </div>
             <% } else { %>
@@ -34,4 +33,7 @@
             <% } %>
         </div>
     </nav>
+    <% if (user && aiChatChannelConfigured) { %>
+        <%- include('partials/mini-chat', { user }) %>
+    <% } %>
     <main class="container">

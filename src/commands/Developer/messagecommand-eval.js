@@ -9,7 +9,7 @@ module.exports = new MessageCommand({
         aliases: ['ev']
     },
     options: {
-        botOwner: true
+        botDevelopers: true
     },
     /**
      * 

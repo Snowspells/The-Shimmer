@@ -1,14 +1,17 @@
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { WebSocketServer } = require('ws');
 const http = require('http');
+const https = require('https');
 const xss = require('xss');
+const { EmbedBuilder } = require('discord.js');
 const { info, error, success, debug } = require('../utils/Console');
-const DatabaseManager = require('../utils/Database');
+const { resolveWebPermissions, noWebPermissions, attachWebPermissions } = require('./middleware/auth');
 
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
@@ -23,7 +26,20 @@ class WebServer {
         this.client = client;
         this.app = express();
         this.port = process.env.WEB_PORT || 3000;
-        this.httpServer = http.createServer(this.app);
+        this.host = process.env.WEB_HOST || '0.0.0.0';
+        const tlsKeyPath = process.env.WEB_TLS_KEY_PATH;
+        const tlsCertPath = process.env.WEB_TLS_CERT_PATH;
+        if (Boolean(tlsKeyPath) !== Boolean(tlsCertPath)) {
+            throw new Error('Configure both WEB_TLS_KEY_PATH and WEB_TLS_CERT_PATH to enable HTTPS.');
+        }
+        this.httpsEnabled = Boolean(tlsKeyPath && tlsCertPath);
+        this.protocol = this.httpsEnabled ? 'https' : 'http';
+        this.httpServer = this.httpsEnabled
+            ? https.createServer({
+                key: fs.readFileSync(path.resolve(tlsKeyPath)),
+                cert: fs.readFileSync(path.resolve(tlsCertPath))
+            }, this.app)
+            : http.createServer(this.app);
         this.wsClients = new Map();
         this.wsConnectionsByIp = new Map();   // IP -> count (DDoS: max connections per IP)
         this.wsConnectionAttempts = new Map(); // IP -> { count, resetAt } (DDoS: connection rate)
@@ -34,14 +50,17 @@ class WebServer {
         this.setupMiddleware();
         this.setupRoutes();
         this.setupWebSocket();
+        this.client.on('messageCreate', message => this.relayAiChannelMessage(message));
     }
 
     setupMiddleware() {
+        this.app.set('trust proxy', 'loopback');
         this.app.set('view engine', 'ejs');
         this.app.set('views', path.join(__dirname, 'views'));
 
         // Security headers
         this.app.use(helmet({
+            hsts: this.httpsEnabled ? { maxAge: 31536000, includeSubDomains: true } : false,
             contentSecurityPolicy: {
                 directives: {
                     defaultSrc: ["'self'"],
@@ -51,6 +70,7 @@ class WebServer {
                     connectSrc: ["'self'", 'ws:', 'wss:'],
                     frameSrc: ["'self'"],
                     fontSrc: ["'self'"],
+                    'upgrade-insecure-requests': this.httpsEnabled ? [] : null,
                 }
             }
         }));
@@ -92,7 +112,7 @@ class WebServer {
             saveUninitialized: false,
             name: 'echo.sid',
             cookie: {
-                secure: process.env.NODE_ENV === 'production',
+                secure: process.env.NODE_ENV === 'production' || this.httpsEnabled,
                 httpOnly: true,
                 sameSite: 'lax',
                 maxAge: 24 * 60 * 60 * 1000 // 24 hours
@@ -109,14 +129,17 @@ class WebServer {
             req.db = this.client.database;
             req.webServer = this;
             res.locals.user = req.session.user || null;
+            res.locals.aiChatChannelConfigured = Boolean(
+                process.env.AI_CHAT_CHANNEL_ID || process.env.ALLOWED_CHANNEL_ID
+            );
             next();
         });
     }
 
     setupRoutes() {
-        this.app.get('/', (req, res) => {
+        this.app.get('/', attachWebPermissions, (req, res) => {
             res.render('index', {
-                botName: 'The Echo',
+                botName: 'The Shimmer',
                 user: req.session.user || null
             });
         });
@@ -189,7 +212,11 @@ class WebServer {
             const bearerToken = url.searchParams.get('token');
 
             if (bearerToken) {
-                this.authenticateWithToken(ws, req, ip, bearerToken);
+                this.authenticateWithToken(ws, req, ip, bearerToken).catch(err => {
+                    error('WebSocket token authentication failed:', err);
+                    this.wsConnectionsByIp.set(ip, Math.max(0, (this.wsConnectionsByIp.get(ip) || 1) - 1));
+                    ws.close(1011, 'Authentication failed');
+                });
             } else {
                 // Fall back to session-based auth (for web browser)
                 const mockRes = { on() {}, end() {}, writeHead() {} };
@@ -201,24 +228,31 @@ class WebServer {
                         return;
                     }
 
-                    // Look up AGID and role color for session users
-                    const linkedUser = this.client.database.getUserByDiscordId(user.id);
-                    const roleColor = this.client.database.getRoleColor(user.staffLevel || 0);
-                    const isOwner = this.isOwnerUser(user.id);
-                    const effectiveLevel = isOwner ? DatabaseManager.STAFF_LEVELS.OWNER : (user.staffLevel || 0);
-                    const effectiveLabel = isOwner ? 'Owner' : (user.staffLabel || 'Member');
-                    const effectiveColor = isOwner ? (this.client.database.getRoleColor(DatabaseManager.STAFF_LEVELS.OWNER)?.color || '#f0883e') : (roleColor?.color || '#8b949e');
-
-                    const enrichedUser = {
-                        ...user,
-                        staffLevel: effectiveLevel,
-                        staffLabel: effectiveLabel,
-                        agid: linkedUser?.agid || null,
-                        roleColor: effectiveColor,
-                        source: 'web'
-                    };
-
-                    this.registerClient(ws, enrichedUser, ip, 'web');
+                    resolveWebPermissions({ discordClient: this.client }, user).then(permissions => {
+                        const linkedUser = this.client.database.getUserByDiscordId(user.id);
+                        const roleColor = this.client.database.getRoleColor(permissions.staffLevel);
+                        const enrichedUser = {
+                            ...user,
+                            ...permissions,
+                            staffLevel: permissions.staffLevel,
+                            staffLabel: permissions.staffLabel,
+                            webPermissions: permissions,
+                            agid: linkedUser?.agid || null,
+                            roleColor: roleColor?.color || '#8b949e',
+                            source: 'web'
+                        };
+                        this.registerClient(ws, enrichedUser, ip, 'web');
+                    }).catch(err => {
+                        error(`Could not refresh Discord staff role for WebSocket user ${user.id}:`, err);
+                        const permissions = noWebPermissions();
+                        this.registerClient(ws, {
+                            ...user,
+                            ...permissions,
+                            webPermissions: permissions,
+                            roleColor: '#8b949e',
+                            source: 'web'
+                        }, ip, 'web');
+                    });
                 });
             }
         });
@@ -248,7 +282,7 @@ class WebServer {
 
         if (msg.type === 'message') {
             const content = xss(msg.content?.trim() || '');
-            if (!content || content.length === 0 || content.length > 500) return;
+            if (!content || content.length === 0 || content.length > 1900) return;
 
             // Slowmode: enforce per-user cooldown
             const now = Date.now();
@@ -262,34 +296,95 @@ class WebServer {
             }
             this.chatCooldowns.set(user.id, now);
 
-            // Log to database
-            this.client.database.logBridgeMessage('web', user.username, user.id, content);
-
-            // Broadcast to all WS clients
-            const broadcastMsg = {
-                type: 'message',
-                source: client.source || 'web',
-                author_name: user.username,
-                author_id: user.id,
-                content: content,
-                timestamp: new Date().toISOString(),
-                isStaff: user.isStaff,
-                staffLevel: user.staffLevel || 0,
-                staffLabel: user.staffLabel || 'Member',
-                roleColor: user.roleColor || '#8b949e',
-                agid: user.agid || null
-            };
-            this.broadcastToWebClients(broadcastMsg);
-
-            // Relay to Discord bridge channel
-            this.relayToDiscord(user.username, content);
-
-            // Relay to game
-            this.relayToGame(user.username, content, user.id);
+            this.relayToAiChatChannel(user, content).catch(err => {
+                error(`Website chat delivery failed for ${user.id}:`, err);
+                if (client.ws.readyState === 1) {
+                    client.ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'Could not deliver your message to the Discord chat channel.'
+                    }));
+                }
+            });
         }
     }
 
-    authenticateWithToken(ws, req, ip, token) {
+    getAiChatChannelId() {
+        return process.env.AI_CHAT_CHANNEL_ID || process.env.ALLOWED_CHANNEL_ID || null;
+    }
+
+    getAiChannelMessage(message) {
+        const webEmbed = message.author.id === this.client.user.id
+            ? message.embeds.find(embed => embed.footer?.text?.startsWith('echo-web-chat:'))
+            : null;
+        const content = webEmbed
+            ? webEmbed.description || ''
+            : [
+                message.content,
+                ...[...message.attachments.values()].map(attachment =>
+                    `Attachment: ${attachment.name || 'file'} (${attachment.url})`
+                ),
+                ...message.embeds.map(embed => [embed.title, embed.description].filter(Boolean).join('\n'))
+            ].filter(Boolean).join('\n\n');
+        if (!content) return null;
+
+        const webUserId = webEmbed?.footer?.text.slice('echo-web-chat:'.length) || null;
+        return {
+            id: message.id,
+            source: webEmbed ? 'web' : 'discord',
+            author_name: webEmbed?.author?.name || message.author.globalName || message.author.username,
+            author_id: webUserId || message.author.id,
+            content,
+            timestamp: message.createdAt?.toISOString() || new Date().toISOString()
+        };
+    }
+
+    async sendAiChannelHistory(ws) {
+        const channelId = this.getAiChatChannelId();
+        if (!channelId) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Discord chat channel is not configured.' }));
+            return;
+        }
+        const channel = await this.client.channels.fetch(channelId);
+        if (!channel?.isTextBased() || !channel.messages) {
+            throw new Error(`Configured AI chat channel ${channelId} is not an accessible text channel.`);
+        }
+        const fetched = await channel.messages.fetch({ limit: 50 });
+        const messages = [...fetched.values()].reverse()
+            .map(message => this.getAiChannelMessage(message))
+            .filter(Boolean);
+        ws.send(JSON.stringify({ type: 'history', channel_chat: true, messages }));
+    }
+
+    async relayToAiChatChannel(user, content) {
+        const channelId = this.getAiChatChannelId();
+        if (!channelId) throw new Error('AI_CHAT_CHANNEL_ID is required for website chat.');
+        const channel = await this.client.channels.fetch(channelId);
+        if (!channel?.isTextBased() || !channel.send) {
+            throw new Error(`Configured AI chat channel ${channelId} is not an accessible text channel.`);
+        }
+
+        const displayName = user.displayName || user.username;
+        const embed = new EmbedBuilder()
+            .setColor(0x6e56cf)
+            .setAuthor({
+                name: displayName,
+                ...(user.avatar ? { iconURL: `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` } : {})
+            })
+            .setDescription(content)
+            .setFooter({ text: `echo-web-chat:${user.id}` })
+            .setTimestamp();
+        await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+    }
+
+    relayAiChannelMessage(message) {
+        const channelId = this.getAiChatChannelId();
+        if (!channelId || message.channel.id !== channelId) return;
+        const formatted = this.getAiChannelMessage(message);
+        if (!formatted) return;
+        this.broadcastToWebClients({ type: 'message', channel_chat: true, ...formatted });
+    }
+
+    async authenticateWithToken(ws, req, ip, token) {
         const tokenData = this.client.database.getClientToken(token);
         if (!tokenData || new Date(tokenData.expires_at) < new Date()) {
             this.wsConnectionsByIp.set(ip, (this.wsConnectionsByIp.get(ip) || 1) - 1);
@@ -298,19 +393,27 @@ class WebServer {
         }
 
         const linkedUser = this.client.database.getUserByDiscordId(tokenData.discord_id);
-        const isOwner = this.isOwnerUser(tokenData.discord_id);
-        const effectiveLevel = isOwner ? DatabaseManager.STAFF_LEVELS.OWNER : (tokenData.staff_level || 0);
-        const effectiveLabel = isOwner ? 'Owner' : (tokenData.staff_label || 'Member');
+        let permissions;
+        try {
+            permissions = await resolveWebPermissions({ discordClient: this.client }, { id: tokenData.discord_id });
+        } catch (err) {
+            error(`Could not resolve Discord permissions for WebSocket user ${tokenData.discord_id}:`, err);
+            permissions = noWebPermissions();
+        }
+        const effectiveLevel = permissions.staffLevel;
+        const effectiveLabel = permissions.staffLabel;
         const roleColor = this.client.database.getRoleColor(effectiveLevel);
 
         const user = {
             id: tokenData.discord_id,
             username: tokenData.username,
+            displayName: tokenData.global_name || tokenData.username,
             discriminator: tokenData.discriminator,
             avatar: tokenData.avatar,
-            isStaff: !!tokenData.is_staff || isOwner,
+            isStaff: permissions.isStaff,
             staffLevel: effectiveLevel,
             staffLabel: effectiveLabel,
+            webPermissions: permissions,
             roles: tokenData.roles,
             agid: linkedUser?.agid || null,
             roleColor: roleColor?.color || '#8b949e',
@@ -320,23 +423,17 @@ class WebServer {
         this.registerClient(ws, user, ip, 'client');
     }
 
-    isOwnerUser(userId) {
-        try {
-            const config = require('../config');
-            return userId === config.users.ownerId;
-        } catch {
-            return false;
-        }
-    }
-
     registerClient(ws, user, ip, source) {
         const clientId = crypto.randomBytes(8).toString('hex');
         this.wsClients.set(clientId, { ws, user, ip, source });
-        debug(`WebSocket connected: ${user.username} (${clientId}) from ${ip} via ${source}`);
+        debug(`WebSocket connected: ${user.displayName || user.username} (${clientId}) from ${ip} via ${source}`);
 
-        // Send recent messages with role colors
-        const recentMessages = this.client.database.getRecentBridgeMessages(50);
-        ws.send(JSON.stringify({ type: 'history', messages: recentMessages }));
+        this.sendAiChannelHistory(ws).catch(err => {
+            error('Could not load Discord channel history for web chat:', err);
+            if (ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'error', message: 'Could not load Discord chat history.' }));
+            }
+        });
 
         // Send role colors config
         const roleColors = this.client.database.getAllRoleColors();
@@ -347,7 +444,7 @@ class WebServer {
 
         ws.on('message', (data) => {
             if (data.length > 10240) {
-                debug(`WebSocket oversized message from ${user.username}`);
+                debug(`WebSocket oversized message from ${user.displayName || user.username}`);
                 return;
             }
             try {
@@ -401,7 +498,8 @@ class WebServer {
                 seenIds.add(client.user.id);
                 users.push({
                     id: client.user.id,
-                    username: client.user.username,
+                    username: client.user.displayName || client.user.username,
+                    displayName: client.user.displayName || client.user.username,
                     avatar: client.user.avatar,
                     staffLevel: client.user.staffLevel || 0,
                     staffLabel: client.user.staffLabel || 'Member',
@@ -481,8 +579,9 @@ class WebServer {
 
     start() {
         return new Promise((resolve) => {
-            this.httpServer.listen(this.port, () => {
-                success(`Web dashboard running at http://localhost:${this.port}`);
+            this.httpServer.listen(this.port, this.host, () => {
+                const publicUrl = process.env.WEB_BASE_URL || `${this.protocol}://${this.host}:${this.port}`;
+                success(`Web dashboard listening on ${this.host}:${this.port}; public URL: ${publicUrl}`);
                 this.startTokenCleanup();
                 resolve();
             });
@@ -509,11 +608,23 @@ class WebServer {
             clearInterval(this.cleanupInterval);
             this.cleanupInterval = null;
         }
-        if (this.httpServer) {
-            this.wss?.close();
-            this.httpServer.close();
-            info('Web server stopped.');
+        if (!this.httpServer?.listening) return Promise.resolve();
+
+        for (const socket of this.wss?.clients || []) {
+            socket.close(1001, 'Server shutting down');
         }
+        this.wss?.close();
+
+        return new Promise((resolve, reject) => {
+            this.httpServer.close(err => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                info('Web server stopped.');
+                resolve();
+            });
+        });
     }
 }
 

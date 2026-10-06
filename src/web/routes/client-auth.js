@@ -1,7 +1,8 @@
 const express = require('express');
 const crypto = require('crypto');
-const { info, error, debug } = require('../../utils/Console');
+const { info, error, debug, warn } = require('../../utils/Console');
 const DatabaseManager = require('../../utils/Database');
+const { resolveWebPermissions } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -9,7 +10,8 @@ const DISCORD_API = 'https://discord.com/api/v10';
 const TOKEN_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 function getClientRedirectUri() {
-    const base = process.env.WEB_BASE_URL || `http://localhost:${process.env.WEB_PORT || 3000}`;
+    const base = (process.env.WEB_BASE_URL || `http://localhost:${process.env.WEB_PORT || 3000}`)
+        .replace(/\/+$/, '');
     return `${base}/auth/client/callback`;
 }
 
@@ -107,8 +109,6 @@ router.get('/callback', async (req, res) => {
                 if (memberResponse.ok) {
                     const memberData = await memberResponse.json();
                     userRoles = memberData.roles || [];
-                    staffLevel = req.db.getStaffLevelForRoles(userRoles);
-                    staffLabel = DatabaseManager.STAFF_LABELS[staffLevel] || null;
                 }
             } catch (memberErr) {
                 debug(`Error fetching guild member roles: ${memberErr.message}`);
@@ -118,6 +118,20 @@ router.get('/callback', async (req, res) => {
         if (isOwner) {
             staffLevel = DatabaseManager.STAFF_LEVELS.OWNER;
             staffLabel = 'Owner';
+        }
+
+        let webPermissions;
+        try {
+            webPermissions = await resolveWebPermissions(req, { id: discordUser.id });
+        } catch (permissionErr) {
+            warn(`Could not resolve Discord web permissions for ${discordUser.id} during client login: ${permissionErr.message}`);
+            webPermissions = null;
+            staffLevel = 0;
+            staffLabel = 'Member';
+        }
+        if (webPermissions) {
+            staffLevel = webPermissions.staffLevel;
+            staffLabel = webPermissions.staffLabel;
         }
 
         // Generate client token
@@ -133,9 +147,10 @@ router.get('/callback', async (req, res) => {
         req.db.createClientToken(clientToken, {
             discord_id: discordUser.id,
             username: discordUser.username,
+            global_name: discordUser.global_name || null,
             discriminator: discordUser.discriminator,
             avatar: discordUser.avatar,
-            is_staff: staffLevel > 0,
+            is_staff: webPermissions?.isStaff || false,
             staff_level: staffLevel,
             staff_label: staffLabel,
             roles: userRoles,
@@ -161,7 +176,7 @@ router.get('/callback', async (req, res) => {
             h1{color:#3fb950;margin-bottom:1rem}p{color:#8b949e}</style></head>
             <body><div class="card">
             <h1>Login Successful</h1>
-            <p>You can close this window and return to The Echo client.</p>
+            <p>You can close this window and return to The Shimmer client.</p>
             <p id="status">Redirecting...</p>
             </div>
             <script>
@@ -208,6 +223,7 @@ router.post('/validate', (req, res) => {
         user: {
             id: tokenData.discord_id,
             username: tokenData.username,
+            displayName: tokenData.global_name || tokenData.username,
             discriminator: tokenData.discriminator,
             avatar: tokenData.avatar,
             isStaff: !!tokenData.is_staff,

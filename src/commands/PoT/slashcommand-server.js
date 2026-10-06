@@ -1,6 +1,8 @@
-const { ChatInputCommandInteraction, ApplicationCommandOptionType, PermissionFlagsBits, MessageFlags } = require("discord.js");
+const { ChatInputCommandInteraction, ApplicationCommandOptionType, MessageFlags } = require("discord.js");
 const ApplicationCommand = require("../../structure/ApplicationCommand");
 const { normalizeAgid, isValidAgid } = require("../../utils/pot");
+const DatabaseManager = require("../../utils/Database");
+const { executeModerationAction } = require("../../utils/ModerationAudit");
 
 const agidOption = {
     name: 'agid',
@@ -20,7 +22,6 @@ module.exports = new ApplicationCommand({
         name: 'server',
         description: 'Path of Titans server administration via RCON',
         type: 1,
-        default_member_permissions: PermissionFlagsBits.Administrator.toString(),
         options: [
             {
                 name: 'status',
@@ -35,7 +36,13 @@ module.exports = new ApplicationCommand({
                     name: 'reason',
                     description: 'Reason for the kick',
                     type: ApplicationCommandOptionType.String,
-                    required: false
+                    max_length: 200,
+                    required: true
+                }, {
+                    name: 'evidence_url',
+                    description: 'HTTP(S) URL with evidence for the kick',
+                    type: ApplicationCommandOptionType.String,
+                    required: true
                 }, serverOption]
             },
             {
@@ -43,14 +50,20 @@ module.exports = new ApplicationCommand({
                 description: 'Ban a player from the server',
                 type: ApplicationCommandOptionType.Subcommand,
                 options: [agidOption, {
-                    name: 'hours',
-                    description: 'Ban duration in hours (0 = permanent)',
-                    type: ApplicationCommandOptionType.Integer,
-                    required: false
-                }, {
                     name: 'reason',
                     description: 'Reason for the ban',
                     type: ApplicationCommandOptionType.String,
+                    max_length: 200,
+                    required: true
+                }, {
+                    name: 'evidence_url',
+                    description: 'HTTP(S) URL with evidence for the ban',
+                    type: ApplicationCommandOptionType.String,
+                    required: true
+                }, {
+                    name: 'hours',
+                    description: 'Ban duration in hours (0 = permanent)',
+                    type: ApplicationCommandOptionType.Integer,
                     required: false
                 }, serverOption]
             },
@@ -91,7 +104,8 @@ module.exports = new ApplicationCommand({
         ]
     },
     options: {
-        cooldown: 3000
+        cooldown: 3000,
+        requiredStaffLevel: DatabaseManager.STAFF_LEVELS.STAFF
     },
 
     /**
@@ -138,18 +152,43 @@ module.exports = new ApplicationCommand({
         try {
             let response;
             let summary;
+            let auditWarning = null;
 
             switch (sub) {
                 case 'kick': {
-                    const reason = interaction.options.getString('reason') || '';
-                    response = await client.rcon.kick(agid, reason, server);
+                    const reason = interaction.options.getString('reason', true);
+                    const evidenceUrl = interaction.options.getString('evidence_url', true);
+                    const action = await executeModerationAction(client, {
+                        action: 'In-game kick',
+                        target: `AGID ${agid}`,
+                        actorName: interaction.user.globalName || interaction.user.username,
+                        actorId: interaction.user.id,
+                        reason,
+                        maxReasonLength: 200,
+                        evidenceUrl,
+                        context: `Server: ${server || 'Primary'}`
+                    }, () => client.rcon.kick(agid, reason.trim(), server));
+                    response = action.result;
+                    auditWarning = action.auditWarning;
                     summary = `Kicked \`${agid}\`${reason ? ` (${reason})` : ''}.`;
                     break;
                 }
                 case 'ban': {
                     const hours = interaction.options.getInteger('hours') ?? 0;
-                    const reason = interaction.options.getString('reason') || '';
-                    response = await client.rcon.ban(agid, hours, reason, server);
+                    const reason = interaction.options.getString('reason', true);
+                    const evidenceUrl = interaction.options.getString('evidence_url', true);
+                    const action = await executeModerationAction(client, {
+                        action: 'In-game ban',
+                        target: `AGID ${agid}`,
+                        actorName: interaction.user.globalName || interaction.user.username,
+                        actorId: interaction.user.id,
+                        reason,
+                        maxReasonLength: 200,
+                        evidenceUrl,
+                        context: `Duration: ${hours === 0 ? 'Permanent' : `${hours} hours`}; server: ${server || 'Primary'}`
+                    }, () => client.rcon.ban(agid, hours, reason.trim(), server));
+                    response = action.result;
+                    auditWarning = action.auditWarning;
                     summary = `Banned \`${agid}\` for ${hours === 0 ? 'permanent' : `${hours}h`}${reason ? ` (${reason})` : ''}.`;
                     break;
                 }
@@ -185,7 +224,9 @@ module.exports = new ApplicationCommand({
             const responseText = typeof response === 'string' && response.trim().length > 0
                 ? `\n\`\`\`\n${response.trim().slice(0, 1500)}\n\`\`\``
                 : '';
-            await interaction.editReply({ content: `${summary}${responseText}` });
+            await interaction.editReply({
+                content: `${summary}${responseText}${auditWarning ? `\n⚠️ ${auditWarning}` : ''}`
+            });
         } catch (err) {
             error(`RCON ${sub} command error:`, err);
             await interaction.editReply({ content: `Command failed: ${err.message}` });

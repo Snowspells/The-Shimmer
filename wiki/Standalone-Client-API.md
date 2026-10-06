@@ -1,6 +1,6 @@
 # Standalone Client API
 
-The Echo supports standalone chat clients (Windows, Linux, Android) via token-based authentication and extended WebSocket features. This page documents the API endpoints and protocol extensions used by the standalone client.
+The Shimmer supports standalone chat clients (Windows, Linux, Android) via token-based authentication and extended WebSocket features. This page documents the API endpoints and protocol extensions used by the standalone client.
 
 ## Authentication
 

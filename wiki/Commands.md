@@ -1,6 +1,6 @@
 # Commands
 
-The Echo supports three types of Discord commands: **slash commands**, **message commands** (prefix-based), and **context menus** (right-click).
+The Shimmer supports three types of Discord commands: **slash commands**, **message commands** (prefix-based), and **context menus** (right-click).
 
 ---
 
@@ -43,15 +43,15 @@ Requires RCON to be configured. See **[Path of Titans Integration](Path-of-Titan
 
 | Command | Description | Access |
 |---------|-------------|--------|
-| `/players [server]` | Lists players currently online on the server. | Manage Messages |
-| `/announce <message> [server]` | Broadcasts a server-wide announcement in-game. | Manage Messages |
-| `/server status` | Shows configured RCON servers and connection state. | Administrator |
-| `/server kick <agid> [reason] [server]` | Kicks a player. | Administrator |
-| `/server ban <agid> [hours] [reason] [server]` | Bans a player (`hours=0` = permanent). | Administrator |
-| `/server heal <agid> [server]` | Heals a player. | Administrator |
-| `/server healall [server]` | Heals all players. | Administrator |
-| `/server whisper <agid> <message> [server]` | Sends a private message to a player. | Administrator |
-| `/server teleport <agid> <x> <y> <z> [server]` | Teleports a player to coordinates. | Administrator |
+| `/players [server]` | Lists players currently online on the server. | Staff or higher |
+| `/announce <message> [server]` | Broadcasts a server-wide announcement in-game. | Staff or higher |
+| `/server status` | Shows configured RCON servers and connection state. | Staff or higher |
+| `/server kick <agid> <reason> <evidence_url> [server]` | Kicks a player; reason and evidence URL are required and the action is written to `MODERATION_LOG_CHANNEL_ID`. | Staff or higher |
+| `/server ban <agid> [hours] <reason> <evidence_url> [server]` | Bans a player (`hours=0` = permanent); reason and evidence URL are required and the action is written to `MODERATION_LOG_CHANNEL_ID`. | Staff or higher |
+| `/server heal <agid> [server]` | Heals a player. | Staff or higher |
+| `/server healall [server]` | Heals all players. | Staff or higher |
+| `/server whisper <agid> <message> [server]` | Sends a private message to a player. | Staff or higher |
+| `/server teleport <agid> <x> <y> <z> [server]` | Teleports a player. | Staff or higher |
 
 ---
 
@@ -59,9 +59,9 @@ Requires RCON to be configured. See **[Path of Titans Integration](Path-of-Titan
 
 | Command | Description | Access |
 |---------|-------------|--------|
-| `/staffrole assign <role> <level>` | Maps a Discord role to a staff access level | Bot owner only |
-| `/staffrole remove <role>` | Removes a Discord role from staff access | Bot owner only |
-| `/staffrole list` | Lists all configured staff roles for the current server | Bot owner only |
+| `/staffrole assign <role> <level>` | Edits the legacy staff-role table; does not grant access | Developer only |
+| `/staffrole remove <role>` | Edits the legacy staff-role table; does not grant access | Developer only |
+| `/staffrole list` | Lists legacy staff-role records | Developer only |
 
 #### `/staffrole assign`
 - **Options:**
@@ -71,7 +71,7 @@ Requires RCON to be configured. See **[Path of Titans Integration](Path-of-Titan
     - `Moderator (edit users)` — Level 2
     - `Administrator (full access)` — Level 3
 - **Cooldown:** 3 seconds
-- **Behavior:** Saves the role-to-level mapping in the database. Users with this Discord role will be granted the corresponding staff access when they log into the web dashboard.
+- **Behavior:** Saves the legacy role mapping. Active website and bot access is configured with role IDs in `.env`; see [Staff System](Staff-System.md).
 
 #### `/staffrole remove`
 - **Options:**
@@ -89,17 +89,13 @@ See [Staff System](Staff-System.md) for full details on how role-based access wo
 
 | Command | Description | Access |
 |---------|-------------|--------|
-| `/ticket create [subject]` | Creates a new private ticket channel | Everyone |
-| `/ticket close [reason]` | Closes the ticket, saves transcript, and deletes the channel | Ticket creator / Staff |
-| `/ticket add <user>` | Adds a user to the ticket channel | Ticket creator / Staff |
-| `/ticket remove <user>` | Removes a user from the ticket channel | Ticket creator / Staff |
-| `/ticket claim` | Claims the ticket as assigned staff | Staff only |
-| `/ticketsetup category <channel>` | Sets the category for new ticket channels | Administrator |
-| `/ticketsetup log-channel <channel>` | Sets the log channel for ticket events | Administrator |
-| `/ticketsetup support-role <role>` | Sets the role with automatic ticket access | Administrator |
-| `/ticketsetup welcome-message <message>` | Sets the ticket welcome message | Administrator |
-| `/ticketsetup panel [title] [description]` | Sends a ticket creation panel with button | Administrator |
-| `/ticketsetup view` | Shows current ticket configuration and stats | Administrator |
+| `/ticket create [subject]` | Opens a private DM ticket | Everyone |
+| `/ticketsetup category <channel>` | Legacy channel-ticket setting | Owner or Developer |
+| `/ticketsetup log-channel <channel>` | Sets the ticket creation log channel | Owner or Developer |
+| `/ticketsetup support-role <role>` | Legacy channel-ticket setting | Owner or Developer |
+| `/ticketsetup welcome-message <message>` | Sets the opening DM message | Owner or Developer |
+| `/ticketsetup panel [title] [description]` | Sends a ticket creation panel with button | Owner or Developer |
+| `/ticketsetup view` | Shows current ticket configuration and stats | Owner or Developer |
 
 See [Ticketing System](Ticketing-System.md) for full setup guide and transcript details.
 
@@ -116,17 +112,17 @@ See [Ticketing System](Ticketing-System.md) for full setup guide and transcript 
 
 ### Developer / Debug
 
-These commands are restricted to bot developers or the bot owner. They are primarily used for development and debugging.
+Developer-only commands are restricted to the Discord user configured by `DEVELOPER_USER_ID`. `/reload` is available to Owner role holders and that configured Developer user.
 
 | Command | Description | Access |
 |---------|-------------|--------|
-| `/eval <code>` | Executes arbitrary JavaScript code and returns the result as a file attachment. The bot token is automatically redacted from output. | Bot owner only |
-| `/reload` | Reloads all commands and re-registers application commands with Discord | Developers only |
+| `/eval <code>` | Executes arbitrary JavaScript code and returns the result as a file attachment. The bot token is automatically redacted from output. | Developer only |
+| `/reload` | Reloads all commands and re-registers application commands with Discord | Owner or Developer |
 | `/components` | Sends a test message with example button and select menu components | Developers only |
 | `/show-modal` | Opens a test modal dialog | Developers only |
 | `/autocomplete <option>` | Tests the autocomplete interaction handler | Developers only |
 
-> **Warning:** The `/eval` command can execute any code with the bot's permissions. It should only be accessible to the bot owner.
+> **Warning:** The `/eval` command can execute any code with the bot's permissions. Keep `DEVELOPER_USER_ID` limited to a trusted account.
 
 ---
 
@@ -139,8 +135,8 @@ Prefix-based commands triggered by typing `{prefix}command` in chat. The default
 | `help` | `h` | Lists all available message commands | Everyone (10s cooldown) |
 | `ping` | `p` | Shows the bot's WebSocket latency | Everyone (5s cooldown) |
 | `setprefix <new>` | — | Changes the command prefix for the current server (max 5 characters). Setting it to the default prefix resets the custom setting. | Everyone (5s cooldown) |
-| `eval <code>` | `ev` | Executes JavaScript code (same as slash command version) | Bot owner only |
-| `reload` | — | Reloads all commands | Developers only |
+| `eval <code>` | `ev` | Executes JavaScript code (same as slash command version) | Developer only |
+| `reload` | — | Reloads all commands | Owner or Developer |
 
 ---
 
@@ -161,8 +157,8 @@ Right-click (or long-press on mobile) a user or message to access these commands
 |-------|-----|----------|
 | **Everyone** | All server members | `/link`, `/ticket create`, `/ping`, `/help`, `ping`, `help`, `setprefix`, context menus |
 | **Server Admin** | Members with Administrator permission | `/ticketsetup` (all subcommands) |
-| **Developers** | Users listed in `config.users.developers` | `/adminlink`, `/reload`, `/components`, `/show-modal`, `/autocomplete`, `reload` |
-| **Bot Owner** | The user ID in `config.users.ownerId` | `/eval`, `/staffrole`, `eval`, plus everything above |
+| **Owner** | Members with the configured Owner role | `/reload` and `/ticketsetup` |
+| **Developer** | The user ID in `DEVELOPER_USER_ID` | All commands, including `/eval`, `/adminlink`, and developer utilities |
 
 ## Cooldowns
 

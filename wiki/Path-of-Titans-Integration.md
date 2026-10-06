@@ -1,18 +1,18 @@
 # Path of Titans Integration
 
-The Echo integrates directly with a **Path of Titans** dedicated server. Because
+The Shimmer integrates directly with a **Path of Titans** dedicated server. Because
 Alderon Games servers cannot run arbitrary code, the integration uses the two
 channels the game actually exposes:
 
 | Direction | Mechanism |
 |-----------|-----------|
-| **The Echo → Game** (Discord/Web chat, admin actions) | **RCON** (Source-style RCON over TCP) |
-| **Game → The Echo** (in-game chat, join/leave, AGIDs) | The PoT server's built-in **Discord webhook** |
+| **The Shimmer → Game** (Discord/Web chat, admin actions) | **RCON** (Source-style RCON over TCP) |
+| **Game → The Shimmer** (in-game chat, join/leave, AGIDs) | The PoT server's built-in **Discord webhook** |
 
 ```
                          RCON (TCP)
    ┌──────────┐   announce / kick / ban / ...   ┌─────────────┐
-   │ The Echo │ ───────────────────────────────>│ Path of     │
+   │The Shimmer│ ───────────────────────────────>│ Path of     │
    │ (bot +   │                                  │ Titans      │
    │  web)    │<─────────────────────────────────│ Server      │
    └──────────┘   Discord webhook (chat/joins)   └─────────────┘
@@ -29,7 +29,7 @@ channels the game actually exposes:
 ### 1. Enable RCON on your Path of Titans server
 
 In your server configuration, enable RCON and set a port and password. Then set
-the following environment variables for The Echo:
+the following environment variables for The Shimmer:
 
 ```env
 RCON_HOST=your.server.ip
@@ -51,7 +51,7 @@ web dashboard run exactly as before.
 
 In your Path of Titans server's Discord integration settings, configure it to
 post **Global chat** and **join/leave** events to a Discord channel via webhook.
-Then tell The Echo which channel that is:
+Then tell The Shimmer which channel that is:
 
 ```env
 GAME_CHAT_CHANNEL_ID=1234567890123456789   # channel the PoT webhook posts to
@@ -114,7 +114,7 @@ Each must use named capture groups: `(?<name>)`, `(?<agid>)`, and for chat
 Linking proves a Discord user controls an in-game account using an RCON whisper:
 
 1. The player runs `/link agid:<AGID>` in Discord.
-2. The Echo whispers a one-time code to that AGID **in-game** (the player must be online).
+2. The Shimmer whispers a one-time code to that AGID **in-game** (the player must be online).
 3. The player runs `/linkverify code:<code>` to confirm the link.
 
 If RCON is not configured, `/link` stores the AGID directly (marked unverified).
@@ -134,8 +134,8 @@ join and chat events and is visible in the Staff Panel.
 | `/players [server]` | Manage Messages | List players currently online (RCON) |
 | `/announce message:<text> [server]` | Manage Messages | Broadcast a server-wide announcement |
 | `/server status` | Administrator | Show configured RCON servers and connection state |
-| `/server kick agid:<AGID> [reason] [server]` | Administrator | Kick a player |
-| `/server ban agid:<AGID> [hours] [reason] [server]` | Administrator | Ban a player (`hours=0` = permanent) |
+| `/server kick agid:<AGID> reason:<text> evidence_url:<URL> [server]` | Staff or higher | Kick a player; reason and evidence URL are required and logged to `MODERATION_LOG_CHANNEL_ID` |
+| `/server ban agid:<AGID> [hours] reason:<text> evidence_url:<URL> [server]` | Staff or higher | Ban a player (`hours=0` = permanent); reason and evidence URL are required and logged to `MODERATION_LOG_CHANNEL_ID` |
 | `/server heal agid:<AGID> [server]` | Administrator | Heal a player |
 | `/server healall [server]` | Administrator | Heal all players |
 | `/server whisper agid:<AGID> message:<text> [server]` | Administrator | Private message a player |
@@ -164,7 +164,7 @@ a live player list, recently seen players (with AGIDs), and moderation controls:
 - **Graceful when unconfigured** — with no RCON variables set, outbound relay falls
   back to the legacy `GAME_WEBHOOK_URL` HTTP path (if configured) and all RCON
   commands report "RCON is not configured."
-- **Loop protection** — messages The Echo relays into the game are remembered
+- **Loop protection** — messages The Shimmer relays into the game are remembered
   briefly so the PoT webhook's echo of them is not relayed back out.
 - **Auto-reconnect** — RCON connections reconnect automatically (10s backoff).
 - **Resilient parsing** — unrecognized webhook lines are logged at debug level and

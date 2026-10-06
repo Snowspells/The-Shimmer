@@ -1,6 +1,6 @@
 # Web Dashboard
 
-The Echo includes a companion website that runs alongside the Discord bot. Players log in with their Discord account to view their linked game data, and staff members access moderation tools through the admin panel.
+The Shimmer includes a companion website that runs alongside the Discord bot. Players log in with their Discord account to view their linked game data, and staff members access moderation tools through the admin panel.
 
 ## Accessing the Dashboard
 
@@ -10,7 +10,7 @@ The web dashboard starts automatically when you run `npm start`. By default it l
 http://localhost:3000
 ```
 
-In production, set `WEB_BASE_URL` in your `.env` to match your domain (e.g. `https://echo.yourdomain.com`).
+In production, set `WEB_BASE_URL` in your `.env` to match your domain (e.g. `https://shimmer.yourdomain.com`).
 
 ---
 
@@ -18,9 +18,9 @@ In production, set `WEB_BASE_URL` in your `.env` to match your domain (e.g. `htt
 
 ### Home (`/`)
 
-The landing page for The Echo. It displays:
+The landing page for The Shimmer. It displays:
 
-- **The Echo tagline** and a brief description of what the platform does
+- **The Shimmer tagline** and a brief description of what the platform does
 - **Three feature cards:**
   - **Account Linking** — Link Discord to your in-game identity
   - **Global Chat Bridge** — Cross-platform chat between Discord and the game
@@ -33,7 +33,7 @@ The landing page for The Echo. It displays:
 
 *Requires login.*
 
-The user's personal page showing their linked account information.
+The user's personal page showing their linked account information, current Marks, and inventory.
 
 **Profile Section:**
 - Discord avatar (full size)
@@ -61,39 +61,30 @@ Three stat cards:
 
 ### Staff Panel (`/admin`)
 
-*Requires staff access (Support level or higher). See [Staff System](Staff-System.md).*
+*Requires the Staff role or higher. See [Staff System](Staff-System.md).*
 
-The admin panel adapts based on the logged-in user's staff level.
+The panel and its actions follow configured role IDs in `STAFF_GUILD_ID`, rechecked for protected requests. Highest role level wins.
 
 **Header:**
 - Page title with a color-coded staff badge showing the user's level and tier name
 
-**Stats Overview** (visible to all staff):
+**Stats Overview:**
 | Stat | Description |
 |------|-------------|
-| Linked Users | Total number of accounts linked in the database |
+| Linked Users | Total number of accounts linked; visible to members with Manage Server or Administrator |
 | Servers | Number of Discord servers the bot is in |
 | Bot Uptime | How long the bot has been running |
 
-**Linked Users Table:**
+**Role access:**
+- Staff in Training: ticket management
+- Staff: linked-user marks/inventory management, chat moderation, and server controls
+- Owner: Staff access plus `/reload`
+- Developer: all web capabilities and bot commands
 
-| Staff Level | Can View | Can Edit | Can Delete |
-|-------------|----------|----------|------------|
-| Support (1) | Yes (read-only) | No | No |
-| Moderator (2) | Yes | AGID, Marks | No |
-| Administrator (3) | Yes | AGID, Marks | Yes |
-
-Table columns: Discord ID, AGID, Marks, Inventory Items count, Linked Since date, and Actions (if applicable).
-
-**Staff Roles Configuration:**
-- Table showing all configured staff role mappings (Role ID, Level, Guild ID, date configured)
-- If no roles are configured, shows instructions to use `/staffrole assign`
-
-**Access Levels Reference:**
-- Quick reference cards explaining what each staff tier can do
+In-game kicks and bans from the panel, as well as chat mute, unmute, and message-deletion endpoints, require a reason and HTTP(S) evidence URL. These actions are blocked unless `MODERATION_LOG_CHANNEL_ID` is configured and writable; each is recorded there with its outcome.
 
 **Recent Chat Bridge Messages:**
-- Scrollable log of the 25 most recent bridged messages
+- Visible to members with Manage Messages or Administrator; shows the 25 most recent bridged messages
 - Each entry shows source (Discord/Game), author name, message content, and timestamp
 - Discord messages highlighted in blue, game messages in green
 
@@ -103,48 +94,42 @@ Table columns: Discord ID, AGID, Marks, Inventory Items count, Linked Since date
 
 *Requires login.*
 
-Lists tickets visible to the current user.
+The page is titled **Live Communication**. Users can open one ticket at a time, continue or close it, and review previous transcripts. New tickets create a private DM conversation with the bot; messages sent in the DM and on the website appear in the same conversation. Staff can reply to and close tickets from the website.
 
-- **Staff** see all tickets across all guilds
-- **Regular users** see only tickets they created
+- Staff in Training and higher see and manage all tickets for the configured staff guild
+- Members see only tickets they created
+- Existing channel-based tickets remain read-only history
 - **Filter buttons:** All, Open, Closed
-- **Table columns:** ID, Subject, Created By, Status, Claimed By, Created date, Closed date, Transcript link
+- **Live updates:** Open conversations refresh automatically
+- Closed DM tickets retain a transcript
 
-Clicking **View** on a closed ticket opens the transcript detail page.
+The bot must be able to DM ticket creators. Users who cannot receive DMs cannot open a DM-backed ticket.
 
 ---
 
-### Ticket Detail (`/tickets/:id/transcript`)
+### Ticket Detail (`/tickets/:id`)
 
 *Requires login. Must be the ticket creator or have staff access.*
 
-Shows full details for a single ticket:
+Shows the ticket conversation and status. The ticket creator and staff can read it; while open, they can reply and close it. Closed tickets remain viewable as a transcript.
 
-- **Info grid:** Subject, Created By, Created date, Claimed By, Closed By
-- **Transcript viewer:** Embedded iframe displaying the saved HTML transcript
-- **"Open Full Transcript"** button opens the raw transcript HTML in a new tab
-- **Back link** returns to the ticket list
+Legacy channel-ticket transcripts remain at `/tickets/:id/transcript`.
 
 ---
 
-### Global Chat (`/chat`)
+### Mini Chat
 
 *Requires login.*
 
-A real-time chatroom bridged with Discord and the in-game Global channel. See [Chat Bridge](Chat-Bridge.md) for full details.
+The mini chat widget appears on every authenticated page and shares messages with the configured AI chat Discord channel. Legacy `/chat` page requests redirect to the dashboard. See [Chat Bridge](Chat-Bridge.md) for details.
 
 **Features:**
-- Live messages from Discord, the game, and other web users, all in one view
-- Color-coded source labels: Discord (blue), Game (green), Web (purple)
-- Connection status indicator (green/red dot) with auto-reconnect
-- Online user count
-- Message input with 500-character limit
+- Recent messages from the configured Discord chat channel
+- Live channel updates and message delivery through WebSocket
+- Connection status indicator with auto-reconnect
+- Message input synchronized with the Discord chat channel
 
-**Staff Moderation** (Moderator level and above):
-- **Moderation bar** — Toggle to see currently muted users
-- **Delete message** — Hover a message and click ✕ to remove it
-- **Mute user** — Hover a message and click the mute icon, enter reason and optional duration
-- **Unmute user** — View muted users list and click "Unmute"
+Chat moderation endpoints remain available to Staff and above; each moderation action requires a reason and evidence URL and is audited in the configured Discord moderation channel.
 
 ---
 
@@ -165,10 +150,10 @@ The navigation bar appears on every page and includes:
 
 | Element | Visibility | Description |
 |---------|------------|-------------|
-| **The Echo** (brand) | Always | Links to the home page |
+| **The Shimmer** (brand) | Always | Links to the home page |
 | **Home** | Always | Links to `/` |
 | **Dashboard** | Logged in | Links to `/dashboard` |
-| **Chat** | Logged in | Links to `/chat` — real-time chatroom bridged with Discord and game |
+| **Mini Chat** | Logged in | Compact chat widget appears on authenticated pages |
 | **Tickets** | Logged in | Links to `/tickets` — view your tickets or all tickets (staff) |
 | **Staff Panel** | Staff only | Links to `/admin` (only shown if the user has a staff level) |
 | **Staff Badge** | Staff only | Color-coded badge showing the user's tier (e.g. "Moderator") |
@@ -184,7 +169,7 @@ The navigation bar appears on every page and includes:
 2. Redirected to Discord's OAuth2 authorization page
 3. User authorizes the application (scopes: `identify`, `guilds.members.read`)
 4. Discord redirects back to `/auth/callback` with an authorization code
-5. The Echo exchanges the code for an access token
+5. The Shimmer exchanges the code for an access token
 6. Fetches the user's Discord profile
 7. If `STAFF_GUILD_ID` is set, fetches the user's roles in that guild and determines their staff level
 8. Creates a session and redirects to `/dashboard`

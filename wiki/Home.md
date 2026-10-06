@@ -1,6 +1,6 @@
-# The Echo — Wiki
+# The Shimmer — Wiki
 
-Welcome to The Echo wiki. This is the documentation for **The Echo**, the community management platform for the **Shattered Echoes Fantasy Semi-Realism** Path of Titans community.
+Welcome to The Shimmer wiki. This is the documentation for **The Shimmer**, the community management platform for the **Shattered Echoes Fantasy Semi-Realism** Path of Titans community.
 
 ## Pages
 
@@ -27,7 +27,7 @@ Welcome to The Echo wiki. This is the documentation for **The Echo**, the commun
 
 ## Overview
 
-The Echo is the community management platform for the Shattered Echoes community, connecting five systems:
+The Shimmer is the community management platform for the Shattered Echoes community, connecting five systems:
 
 1. **Discord Bot** — Runs in your Discord server. Handles account linking, staff role management, ticketing, chat bridging, and utility commands.
 2. **Web Dashboard** — A companion website where players log in with Discord to view their linked account, chat with the community, browse tickets, and view transcripts.

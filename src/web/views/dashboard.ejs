@@ -9,7 +9,7 @@
                 ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`
                 : `https://cdn.discordapp.com/embed/avatars/${parseInt(user.id) % 5}.png` %>"
                 alt="avatar" class="profile-avatar">
-            <h2><%= user.username %></h2>
+            <h2><%= user.displayName || user.username %></h2>
             <p class="profile-id">Discord ID: <code><%= user.id %></code></p>
         </div>
     </div>

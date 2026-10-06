@@ -2,6 +2,7 @@ const { AttachmentBuilder, Message } = require("discord.js");
 const DiscordBot = require("../../client/DiscordBot");
 const MessageCommand = require("../../structure/MessageCommand");
 const config = require("../../config");
+const DatabaseManager = require("../../utils/Database");
 
 module.exports = new MessageCommand({
     command: {
@@ -10,7 +11,7 @@ module.exports = new MessageCommand({
         aliases: []
     },
     options: {
-        botDevelopers: true
+        requiredStaffLevel: DatabaseManager.STAFF_LEVELS.OWNER
     },
     /**
      * 

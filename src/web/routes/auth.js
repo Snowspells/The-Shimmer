@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
-const { info, error, debug } = require('../../utils/Console');
+const { info, error, debug, warn } = require('../../utils/Console');
+const { resolveWebPermissions } = require('../middleware/auth');
 const DatabaseManager = require('../../utils/Database');
 
 const router = express.Router();
@@ -8,7 +9,8 @@ const router = express.Router();
 const DISCORD_API = 'https://discord.com/api/v10';
 
 function getRedirectUri() {
-    const base = process.env.WEB_BASE_URL || `http://localhost:${process.env.WEB_PORT || 3000}`;
+    const base = (process.env.WEB_BASE_URL || `http://localhost:${process.env.WEB_PORT || 3000}`)
+        .replace(/\/+$/, '');
     return `${base}/auth/callback`;
 }
 
@@ -96,9 +98,7 @@ router.get('/callback', async (req, res) => {
                 if (memberResponse.ok) {
                     const memberData = await memberResponse.json();
                     userRoles = memberData.roles || [];
-                    staffLevel = req.db.getStaffLevelForRoles(userRoles);
-                    staffLabel = DatabaseManager.STAFF_LABELS[staffLevel] || null;
-                    debug(`User ${discordUser.username} roles: [${userRoles.join(', ')}] -> staff level: ${staffLevel}`);
+                    debug(`Fetched Discord roles for ${discordUser.username}: [${userRoles.join(', ')}]`);
                 } else {
                     debug(`Could not fetch guild member for ${discordUser.username}: ${memberResponse.status}`);
                 }
@@ -112,15 +112,31 @@ router.get('/callback', async (req, res) => {
             staffLabel = 'Administrator (Owner)';
         }
 
+        let webPermissions;
+        try {
+            webPermissions = await resolveWebPermissions(req, { id: discordUser.id });
+        } catch (permissionErr) {
+            warn(`Could not resolve Discord web permissions for ${discordUser.id} during login: ${permissionErr.message}`);
+            webPermissions = null;
+            staffLevel = 0;
+            staffLabel = 'Member';
+        }
+        if (webPermissions) {
+            staffLevel = webPermissions.staffLevel;
+            staffLabel = webPermissions.staffLabel;
+        }
+
         req.session.user = {
             id: discordUser.id,
             username: discordUser.username,
+            displayName: discordUser.global_name || discordUser.username,
             discriminator: discordUser.discriminator,
             avatar: discordUser.avatar,
-            isStaff: staffLevel > 0,
+            isStaff: webPermissions?.isStaff || false,
             staffLevel,
             staffLabel,
-            roles: userRoles
+            roles: userRoles,
+            webPermissions
         };
 
         const sessionId = crypto.randomBytes(16).toString('hex');
@@ -131,7 +147,7 @@ router.get('/callback', async (req, res) => {
             username: discordUser.username,
             discriminator: discordUser.discriminator,
             avatar: discordUser.avatar,
-            is_staff: staffLevel > 0,
+            is_staff: webPermissions?.isStaff || false,
             expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString()
         });
 

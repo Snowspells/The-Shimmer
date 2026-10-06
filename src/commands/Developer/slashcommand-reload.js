@@ -2,6 +2,7 @@ const { ChatInputCommandInteraction, AttachmentBuilder } = require("discord.js")
 const DiscordBot = require("../../client/DiscordBot");
 const ApplicationCommand = require("../../structure/ApplicationCommand");
 const config = require("../../config");
+const DatabaseManager = require("../../utils/Database");
 
 module.exports = new ApplicationCommand({
     command: {
@@ -11,7 +12,7 @@ module.exports = new ApplicationCommand({
         options: []
     },
     options: {
-        botDevelopers: true
+        requiredStaffLevel: DatabaseManager.STAFF_LEVELS.OWNER
     },
     /**
      * 

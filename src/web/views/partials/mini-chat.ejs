@@ -1,0 +1,22 @@
+<aside id="mini-chat" class="mini-chat">
+    <button id="mini-chat-toggle" class="mini-chat-toggle" type="button" aria-expanded="false" aria-controls="mini-chat-panel">
+        <span>Community Chat</span>
+        <span id="mini-chat-status" class="mini-chat-status">Connecting</span>
+    </button>
+    <section id="mini-chat-panel" class="mini-chat-panel" hidden aria-label="Discord channel chat">
+        <header class="mini-chat-header">
+            <strong>Discord Chat</strong>
+            <button id="mini-chat-close" type="button" class="mini-chat-close" aria-label="Close chat">×</button>
+        </header>
+        <div id="mini-chat-messages" class="mini-chat-messages" aria-live="polite">
+            <p class="mini-chat-placeholder">Connecting to the community channel…</p>
+        </div>
+        <p id="mini-chat-error" class="mini-chat-error" role="status"></p>
+        <form id="mini-chat-form" class="mini-chat-form">
+            <input id="mini-chat-input" type="text" maxlength="1900" autocomplete="off"
+                   placeholder="Message this Discord channel…" aria-label="Chat message" required>
+            <button type="submit" class="btn btn-primary">Send</button>
+        </form>
+    </section>
+</aside>
+<script src="/js/mini-chat.js" defer></script>

@@ -24,10 +24,29 @@ const { error, info } = require('./utils/Console');
 process.on('unhandledRejection', (err) => error('Unhandled Rejection', err));
 process.on('uncaughtException', (err) => error('Uncaught Exception', err));
 
-const shutdown = async () => {
-    info('Shutting down...');
-    try { await rcon.disconnectAll(); } catch { /* ignore */ }
-    process.exit(0);
+let shutdownPromise;
+const shutdown = (signal) => {
+    if (shutdownPromise) return shutdownPromise;
+    shutdownPromise = (async () => {
+        info(`Shutting down after ${signal}...`);
+        let shutdownFailed = false;
+        const runShutdownStep = async (label, operation) => {
+            try {
+                await operation();
+            } catch (err) {
+                shutdownFailed = true;
+                error(`Failed to stop ${label}:`, err);
+            }
+        };
+
+        await runShutdownStep('web server', () => web.stop());
+        await runShutdownStep('RCON connections', () => rcon.disconnectAll());
+        client.stopStatusRotation();
+        await runShutdownStep('Discord client', () => client.destroy());
+        await runShutdownStep('database', () => client.database.close());
+        process.exitCode = shutdownFailed ? 1 : 0;
+    })();
+    return shutdownPromise;
 };
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

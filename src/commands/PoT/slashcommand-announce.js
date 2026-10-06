@@ -1,12 +1,12 @@
-const { ChatInputCommandInteraction, ApplicationCommandOptionType, PermissionFlagsBits, MessageFlags } = require("discord.js");
+const { ChatInputCommandInteraction, ApplicationCommandOptionType, MessageFlags } = require("discord.js");
 const ApplicationCommand = require("../../structure/ApplicationCommand");
+const DatabaseManager = require("../../utils/Database");
 
 module.exports = new ApplicationCommand({
     command: {
         name: 'announce',
         description: 'Broadcast a server-wide announcement in Path of Titans (via RCON)',
         type: 1,
-        default_member_permissions: PermissionFlagsBits.ManageMessages.toString(),
         options: [{
             name: 'message',
             description: 'The announcement to broadcast in-game',
@@ -20,7 +20,8 @@ module.exports = new ApplicationCommand({
         }]
     },
     options: {
-        cooldown: 3000
+        cooldown: 3000,
+        requiredStaffLevel: DatabaseManager.STAFF_LEVELS.STAFF
     },
 
     /**

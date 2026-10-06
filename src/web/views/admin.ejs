@@ -7,10 +7,12 @@
     </div>
 
     <div class="stats-grid">
+        <% if (permissions.canManageServer) { %>
         <div class="stat-card">
             <h3>Linked Users</h3>
             <p class="stat-value"><%= stats.totalUsers %></p>
         </div>
+        <% } %>
         <div class="stat-card">
             <h3>Servers</h3>
             <p class="stat-value"><%= stats.botGuilds %></p>
@@ -21,6 +23,7 @@
         </div>
     </div>
 
+    <% if (permissions.canManageServer || permissions.canKickPlayers || permissions.canBanPlayers) { %>
     <div class="admin-section">
         <h2>Path of Titans Server (RCON)</h2>
         <% if (!rconEnabled) { %>
@@ -38,31 +41,37 @@
                 <% }); %>
             </div>
 
-            <h3>Live Players</h3>
-            <button type="button" class="btn btn-sm btn-primary" onclick="refreshPlayers()">Refresh live list</button>
-            <pre id="rcon-players" class="message-log" style="white-space: pre-wrap; margin-top: 0.5rem;">Click "Refresh live list" to query the server.</pre>
+            <% if (permissions.canManageServer || permissions.canKickPlayers || permissions.canBanPlayers) { %>
+                <h3>Live Players</h3>
+                <button type="button" class="btn btn-sm btn-primary" onclick="refreshPlayers()">Refresh live list</button>
+                <pre id="rcon-players" class="message-log" style="white-space: pre-wrap; margin-top: 0.5rem;">Click "Refresh live list" to query the server.</pre>
+            <% } %>
 
-            <% if (user.staffLevel >= 2) { %>
+            <% if (permissions.canManageServer) { %>
                 <h3 style="margin-top: 1rem;">Announce to Server</h3>
                 <form class="inline-form" onsubmit="return rconAnnounce(event)">
                     <input type="text" id="announce-message" class="input-sm" placeholder="Message to broadcast in-game" style="min-width: 280px;" required>
                     <button type="submit" class="btn btn-sm btn-primary">Send</button>
                 </form>
+            <% } %>
 
+            <% if (permissions.canKickPlayers) { %>
                 <h3 style="margin-top: 1rem;">Kick Player</h3>
                 <form class="inline-form" onsubmit="return rconKick(event)">
                     <input type="text" id="kick-agid" class="input-sm" placeholder="AGID (123-456-789)" required>
-                    <input type="text" id="kick-reason" class="input-sm" placeholder="Reason (optional)">
+                    <input type="text" id="kick-reason" class="input-sm" placeholder="Reason" maxlength="200" required>
+                    <input type="url" id="kick-evidence" class="input-sm" placeholder="Evidence URL" required>
                     <button type="submit" class="btn btn-sm btn-danger">Kick</button>
                 </form>
             <% } %>
 
-            <% if (user.staffLevel >= 3) { %>
+            <% if (permissions.canBanPlayers) { %>
                 <h3 style="margin-top: 1rem;">Ban Player</h3>
                 <form class="inline-form" onsubmit="return rconBan(event)">
                     <input type="text" id="ban-agid" class="input-sm" placeholder="AGID (123-456-789)" required>
                     <input type="number" id="ban-hours" class="input-sm input-number" placeholder="Hours (0=perm)" value="0">
-                    <input type="text" id="ban-reason" class="input-sm" placeholder="Reason (optional)">
+                    <input type="text" id="ban-reason" class="input-sm" placeholder="Reason" maxlength="200" required>
+                    <input type="url" id="ban-evidence" class="input-sm" placeholder="Evidence URL" required>
                     <button type="submit" class="btn btn-sm btn-danger">Ban</button>
                 </form>
             <% } %>
@@ -115,6 +124,7 @@
                     });
                     const data = await r.json().catch(() => ({}));
                     if (!r.ok) { alert('Failed: ' + (data.error || r.status)); return false; }
+                    if (data.auditWarning) alert(data.auditWarning);
                     return true;
                 }
                 async function rconAnnounce(e) {
@@ -130,7 +140,8 @@
                     e.preventDefault();
                     const agid = document.getElementById('kick-agid').value;
                     const reason = document.getElementById('kick-reason').value;
-                    if (await postRcon('/admin/rcon/kick', { agid, reason })) {
+                    const evidenceUrl = document.getElementById('kick-evidence').value;
+                    if (await postRcon('/admin/rcon/kick', { agid, reason, evidenceUrl })) {
                         alert('Kick sent.');
                     }
                     return false;
@@ -140,8 +151,9 @@
                     const agid = document.getElementById('ban-agid').value;
                     const hours = document.getElementById('ban-hours').value;
                     const reason = document.getElementById('ban-reason').value;
+                    const evidenceUrl = document.getElementById('ban-evidence').value;
                     if (!confirm('Ban ' + agid + '?')) return false;
-                    if (await postRcon('/admin/rcon/ban', { agid, hours, reason })) {
+                    if (await postRcon('/admin/rcon/ban', { agid, hours, reason, evidenceUrl })) {
                         alert('Ban sent.');
                     }
                     return false;
@@ -149,7 +161,9 @@
             </script>
         <% } %>
     </div>
+    <% } %>
 
+    <% if (permissions.canManageServer) { %>
     <div class="admin-section">
         <h2>Linked Users</h2>
         <% if (users.length > 0) { %>
@@ -158,45 +172,39 @@
                     <thead>
                         <tr>
                             <th>Discord ID</th>
+                            <th>Discord Username</th>
+                            <th>Global Username</th>
                             <th>AGID</th>
                             <th>Marks</th>
-                            <th>Inventory Items</th>
+                            <th>Inventory (JSON)</th>
                             <th>Linked Since</th>
-                            <% if (user.staffLevel >= 2) { %>
-                                <th>Actions</th>
-                            <% } %>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         <% users.forEach(function(u) { %>
                             <tr>
                                 <td><code><%= u.DID %></code></td>
-                                <% if (user.staffLevel >= 2) { %>
-                                    <td>
-                                        <form method="POST" action="/admin/users/<%= u.DID %>/update" class="inline-form">
-                                            <input type="text" name="agid" value="<%= u.agid %>" class="input-sm">
-                                    </td>
-                                    <td>
-                                            <input type="number" name="marks" value="<%= u.marks %>" class="input-sm input-number">
-                                    </td>
-                                <% } else { %>
-                                    <td><%= u.agid %></td>
-                                    <td><%= u.marks %></td>
-                                <% } %>
-                                <td><%= Array.isArray(u.inventory) ? u.inventory.length : 0 %></td>
+                                <td><%= u.discordUsername %></td>
+                                <td><%= u.globalUsername %></td>
+                                <td>
+                                        <input form="update-user-<%= u.DID %>" type="text" name="agid" value="<%= u.agid %>" class="input-sm">
+                                </td>
+                                <td>
+                                        <input form="update-user-<%= u.DID %>" type="number" name="marks" min="0" step="1" required value="<%= u.marks %>" class="input-sm input-number">
+                                </td>
+                                <td>
+                                        <textarea form="update-user-<%= u.DID %>" name="inventory" rows="3" class="input-sm" aria-label="Inventory JSON for <%= u.DID %>"><%= JSON.stringify(u.inventory) %></textarea>
+                                </td>
                                 <td><%= u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A' %></td>
-                                <% if (user.staffLevel >= 2) { %>
-                                    <td class="actions-cell">
-                                            <button type="submit" class="btn btn-sm btn-primary">Save</button>
-                                        </form>
-                                        <% if (user.staffLevel >= 3) { %>
-                                            <form method="POST" action="/admin/users/<%= u.DID %>/delete" class="inline-form"
-                                                  onsubmit="return confirm('Delete this user?')">
-                                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                                            </form>
-                                        <% } %>
-                                    </td>
-                                <% } %>
+                                <td class="actions-cell">
+                                    <form id="update-user-<%= u.DID %>" method="POST" action="/admin/users/<%= u.DID %>/update"></form>
+                                    <button type="submit" form="update-user-<%= u.DID %>" class="btn btn-sm btn-primary">Save</button>
+                                    <form method="POST" action="/admin/users/<%= u.DID %>/delete" class="inline-form"
+                                          onsubmit="return confirm('Delete this user?')">
+                                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                    </form>
+                                </td>
                             </tr>
                         <% }); %>
                     </tbody>
@@ -208,57 +216,9 @@
             </div>
         <% } %>
     </div>
+    <% } %>
 
-    <div class="admin-section">
-        <h2>Staff Roles Configuration</h2>
-        <% if (staffRoles.length > 0) { %>
-            <div class="table-wrapper">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Role ID</th>
-                            <th>Level</th>
-                            <th>Guild ID</th>
-                            <th>Configured</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <% staffRoles.forEach(function(role) { %>
-                            <tr>
-                                <td><code><%= role.role_id %></code></td>
-                                <td><span class="staff-badge staff-level-<%= role.level %>"><%= role.label %></span></td>
-                                <td><code><%= role.guild_id %></code></td>
-                                <td><%= role.created_at ? new Date(role.created_at).toLocaleDateString() : 'N/A' %></td>
-                            </tr>
-                        <% }); %>
-                    </tbody>
-                </table>
-            </div>
-        <% } else { %>
-            <div class="empty-state">
-                <p>No staff roles configured. Use the <code>/staffrole assign</code> command in Discord to set up role-based access.</p>
-            </div>
-        <% } %>
-    </div>
-
-    <div class="admin-section">
-        <h2>Access Levels Reference</h2>
-        <div class="access-levels">
-            <div class="access-level-card">
-                <span class="staff-badge staff-level-1">Support</span>
-                <p>View staff panel, linked users, and chat bridge logs (read-only).</p>
-            </div>
-            <div class="access-level-card">
-                <span class="staff-badge staff-level-2">Moderator</span>
-                <p>Everything in Support, plus edit user data (AGID, marks).</p>
-            </div>
-            <div class="access-level-card">
-                <span class="staff-badge staff-level-3">Administrator</span>
-                <p>Full access, including deleting users and managing staff roles.</p>
-            </div>
-        </div>
-    </div>
-
+    <% if (permissions.canManageServer) { %>
     <div class="admin-section">
         <h2>Tickets Overview</h2>
         <div class="stats-grid">
@@ -286,7 +246,7 @@
                             <th>Creator</th>
                             <th>Status</th>
                             <th>Created</th>
-                            <th>Transcript</th>
+                            <th>Communication</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -300,8 +260,10 @@
                                 </td>
                                 <td><%= ticket.created_at ? new Date(ticket.created_at).toLocaleDateString() : 'N/A' %></td>
                                 <td>
-                                    <% if (ticket.status === 'closed') { %>
-                                        <a href="/tickets/<%= ticket.id %>/transcript" class="btn btn-sm btn-primary">View</a>
+                                    <% if (ticket.ticket_mode === 'dm' && ticket.status === 'open') { %>
+                                        <a href="/tickets/<%= ticket.id %>" class="btn btn-sm btn-primary">Respond</a>
+                                    <% } else if (ticket.ticket_mode === 'dm' || ticket.status === 'closed') { %>
+                                        <a href="/tickets/<%= ticket.id %>/transcript" class="btn btn-sm">View</a>
                                     <% } else { %>
                                         <span class="text-muted">—</span>
                                     <% } %>
@@ -318,7 +280,9 @@
             </div>
         <% } %>
     </div>
+    <% } %>
 
+    <% if (permissions.canManageChat) { %>
     <div class="admin-section">
         <h2>Recent Chat Bridge Messages</h2>
         <% if (recentMessages.length > 0) { %>
@@ -338,6 +302,7 @@
             </div>
         <% } %>
     </div>
+    <% } %>
 </div>
 
 <%- include('partials/footer') %>

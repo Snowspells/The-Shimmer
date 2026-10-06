@@ -1,64 +1,148 @@
-<%- include('partials/header', { title: `Ticket #${ticket.id}`, user }) %>
+<%- include('partials/header', { title: 'Live Communication', user }) %>
 
 <div class="ticket-detail">
     <div class="page-header">
-        <h1>Ticket #<%= ticket.id %></h1>
-        <span class="ticket-status ticket-<%= ticket.status %>"><%= ticket.status %></span>
+        <div>
+            <h1>Ticket #<%= ticket.id %></h1>
+            <p><%= ticket.subject %><% if (isStaff) { %> · Opened by <%= ticket.creator_name %><% } %></p>
+        </div>
+        <span id="ticket-status" class="ticket-status ticket-<%= ticket.status %>"><%= ticket.status %></span>
     </div>
 
-    <div class="ticket-info-grid">
-        <div class="stat-card">
-            <h3>Subject</h3>
-            <p class="stat-value-sm"><%= ticket.subject %></p>
-        </div>
-        <div class="stat-card">
-            <h3>Created By</h3>
-            <p class="stat-value-sm"><%= ticket.creator_name %></p>
-            <span class="stat-label"><%= ticket.creator_id %></span>
-        </div>
-        <div class="stat-card">
-            <h3>Created</h3>
-            <p class="stat-value-sm"><%= ticket.created_at ? new Date(ticket.created_at).toLocaleString() : 'N/A' %></p>
-        </div>
-        <% if (ticket.claimed_by_name) { %>
-            <div class="stat-card">
-                <h3>Claimed By</h3>
-                <p class="stat-value-sm"><%= ticket.claimed_by_name %></p>
-            </div>
-        <% } %>
-        <% if (ticket.closed_by_name) { %>
-            <div class="stat-card">
-                <h3>Closed By</h3>
-                <p class="stat-value-sm"><%= ticket.closed_by_name %></p>
-                <span class="stat-label"><%= ticket.closed_at ? new Date(ticket.closed_at).toLocaleString() : '' %></span>
-            </div>
-        <% } %>
-        <% if (transcript) { %>
-            <div class="stat-card">
-                <h3>Messages</h3>
-                <p class="stat-value-sm"><%= transcript.message_count %></p>
-            </div>
-        <% } %>
-    </div>
-
-    <% if (transcript) { %>
-        <div class="transcript-section">
-            <div class="transcript-header">
-                <h2>Transcript</h2>
-                <a href="/tickets/<%= ticket.id %>/transcript/raw" target="_blank" class="btn btn-sm btn-primary">Open Full Transcript</a>
-            </div>
-            <div class="transcript-embed">
-                <iframe src="/tickets/<%= ticket.id %>/transcript/raw" frameborder="0" width="100%" height="600"></iframe>
-            </div>
-        </div>
-    <% } else { %>
+    <% if (legacy) { %>
         <div class="empty-state">
-            <p>No transcript available for this ticket<%= ticket.status === 'open' ? ' (ticket is still open)' : '' %>.</p>
+            <h2>Archived channel ticket</h2>
+            <p>Existing channel tickets are preserved as read-only history.</p>
         </div>
+        <% if (transcript) { %>
+            <div class="transcript-section">
+                <div class="transcript-header">
+                    <h2>Transcript</h2>
+                    <a href="/tickets/<%= ticket.id %>/transcript/raw" target="_blank" class="btn btn-sm btn-primary">Open Full Transcript</a>
+                </div>
+                <iframe src="/tickets/<%= ticket.id %>/transcript/raw" title="Ticket transcript" width="100%" height="600"></iframe>
+            </div>
+        <% } else { %>
+            <p class="empty-state">No saved transcript is available for this ticket.</p>
+        <% } %>
+    <% } else { %>
+        <section class="transcript-section">
+            <div class="transcript-header">
+                <h2>Conversation</h2>
+                <span id="live-state" class="text-muted">Live updates enabled</span>
+            </div>
+            <div id="ticket-messages" class="message-log" style="max-height: 55vh; overflow-y: auto;">
+                <% messages.forEach(function(message) { %>
+                    <article class="message-entry" data-message-id="<%= message.id %>">
+                        <strong><%= message.author_type === 'system' ? 'System' : message.author_name %></strong>
+                        <span class="message-time"><%= message.created_at ? new Date(message.created_at).toLocaleString() : '' %></span>
+                        <pre class="message-content" style="white-space: pre-wrap; overflow-wrap: anywhere;"><%= message.content %></pre>
+                    </article>
+                <% }); %>
+            </div>
+        </section>
+
+        <% if (canReply) { %>
+            <form id="ticket-reply-form" class="inline-form" style="margin-top: 1rem;">
+                <label for="ticket-reply">Reply</label>
+                <textarea id="ticket-reply" name="content" maxlength="1900" required rows="4" style="width: 100%;"></textarea>
+                <button type="submit" class="btn btn-primary">Send Reply</button>
+                <button type="button" id="ticket-close" class="btn btn-danger">Close Ticket</button>
+            </form>
+            <p id="ticket-error" role="alert" class="text-muted"></p>
+        <% } %>
+
+        <% if (ticket.status === 'closed') { %>
+            <div class="back-link">
+                <a href="/tickets/<%= ticket.id %>/transcript" class="btn btn-sm">View saved transcript</a>
+            </div>
+        <% } %>
+
+        <script>
+            (() => {
+                const ticketId = <%= Number(ticket.id) %>;
+                const messagesElement = document.getElementById('ticket-messages');
+                const form = document.getElementById('ticket-reply-form');
+                const errorElement = document.getElementById('ticket-error');
+                let lastMessageId = Number(messagesElement.lastElementChild?.dataset.messageId || 0);
+                let isClosed = <%= ticket.status === 'closed' ? 'true' : 'false' %>;
+
+                function appendMessage(message) {
+                    const article = document.createElement('article');
+                    article.className = 'message-entry';
+                    article.dataset.messageId = message.id;
+                    const author = document.createElement('strong');
+                    author.textContent = message.author_type === 'system' ? 'System' : message.author_name;
+                    const time = document.createElement('span');
+                    time.className = 'message-time';
+                    time.textContent = message.created_at ? new Date(message.created_at).toLocaleString() : '';
+                    const content = document.createElement('pre');
+                    content.className = 'message-content';
+                    content.style.whiteSpace = 'pre-wrap';
+                    content.style.overflowWrap = 'anywhere';
+                    content.textContent = message.content;
+                    article.append(author, time, content);
+                    messagesElement.append(article);
+                    messagesElement.scrollTop = messagesElement.scrollHeight;
+                    lastMessageId = Math.max(lastMessageId, Number(message.id));
+                }
+
+                async function refreshMessages() {
+                    try {
+                        const response = await fetch(`/tickets/${ticketId}/messages?after=${lastMessageId}`);
+                        if (!response.ok) throw new Error('Could not refresh this conversation.');
+                        const data = await response.json();
+                        data.messages.forEach(appendMessage);
+                        if (data.status === 'closed' && !isClosed) window.location.reload();
+                    } catch (err) {
+                        document.getElementById('live-state').textContent = err.message;
+                    }
+                }
+
+                if (!isClosed) window.setInterval(refreshMessages, 2500);
+
+                if (form) {
+                    form.addEventListener('submit', async event => {
+                        event.preventDefault();
+                        errorElement.textContent = '';
+                        const button = form.querySelector('button[type="submit"]');
+                        button.disabled = true;
+                        try {
+                            const response = await fetch(`/tickets/${ticketId}/messages`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ content: document.getElementById('ticket-reply').value })
+                            });
+                            const result = await response.json();
+                            if (!response.ok) throw new Error(result.error || 'Could not send reply.');
+                            appendMessage(result.message);
+                            form.reset();
+                        } catch (err) {
+                            errorElement.textContent = err.message;
+                        } finally {
+                            button.disabled = false;
+                        }
+                    });
+
+                    document.getElementById('ticket-close').addEventListener('click', async () => {
+                        if (!window.confirm('Close this ticket? You will still be able to view its transcript.')) return;
+                        errorElement.textContent = '';
+                        try {
+                            const response = await fetch(`/tickets/${ticketId}/close`, { method: 'POST' });
+                            const result = await response.json();
+                            if (!response.ok) throw new Error(result.error || 'Could not close this ticket.');
+                            window.location.reload();
+                        } catch (err) {
+                            errorElement.textContent = err.message;
+                        }
+                    });
+                }
+            })();
+        </script>
     <% } %>
 
     <div class="back-link">
-        <a href="/tickets" class="btn">&larr; Back to Tickets</a>
+        <a href="/tickets" class="btn">&larr; Back to Live Communication</a>
     </div>
 </div>
 

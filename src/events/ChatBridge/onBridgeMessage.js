@@ -10,14 +10,15 @@ module.exports = new Event({
         const bridgeChannelId = process.env.BRIDGE_CHANNEL_ID;
         if (!bridgeChannelId || message.channel.id !== bridgeChannelId) return;
 
-        const displayName = message.member?.displayName || message.author.username;
+        const displayName = message.author.globalName || message.author.username;
         const content = message.cleanContent;
 
         if (!content || content.length === 0) return;
 
         // Always log + relay to connected web clients.
         client.database.logBridgeMessage('discord', displayName, message.author.id, content);
-        if (client.webServer) {
+        const aiChatChannelId = process.env.AI_CHAT_CHANNEL_ID || process.env.ALLOWED_CHANNEL_ID;
+        if (client.webServer && message.channel.id !== aiChatChannelId) {
             client.webServer.relayMessageToWeb('discord', displayName, message.author.id, content);
         }
 

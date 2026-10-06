@@ -72,7 +72,7 @@ module.exports = new ApplicationCommand({
             client.database.createLinkVerification(discordId, agid, code, expiresAt);
 
             try {
-                await client.rcon.whisper(agid, `The Echo link code: ${code} — run /linkverify code:${code} in Discord within 10 minutes.`);
+                await client.rcon.whisper(agid, `The Shimmer link code: ${code} — run /linkverify code:${code} in Discord within 10 minutes.`);
             } catch (err) {
                 client.database.deleteLinkVerification(discordId);
                 error('Link whisper failed:', err);

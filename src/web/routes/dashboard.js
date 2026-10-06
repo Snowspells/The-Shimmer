@@ -1,9 +1,9 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, attachWebPermissions } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, attachWebPermissions, (req, res) => {
     const user = req.session.user;
     const linkedAccount = req.db.getUserByDiscordId(user.id);
 

@@ -1,18 +1,53 @@
 const express = require('express');
-const { requireStaff, STAFF_LEVELS } = require('../middleware/auth');
-const { info } = require('../../utils/Console');
-const DatabaseManager = require('../../utils/Database');
+const { requireStaff, WEB_PERMISSIONS } = require('../middleware/auth');
+const { info, warn } = require('../../utils/Console');
 const { normalizeAgid, isValidAgid } = require('../../utils/pot');
+const { executeModerationAction, ModerationActionError } = require('../../utils/ModerationAudit');
 
 const router = express.Router();
 
-router.get('/', requireStaff(STAFF_LEVELS.SUPPORT), (req, res) => {
-    const users = req.db.getAllUsers();
+async function addDiscordNamesToUsers(discordClient, users) {
+    const guild = process.env.STAFF_GUILD_ID
+        ? discordClient.guilds.cache.get(process.env.STAFF_GUILD_ID)
+        : null;
+    let nextUserIndex = 0;
+
+    async function loadNextUser() {
+        while (nextUserIndex < users.length) {
+            const user = users[nextUserIndex++];
+            let discordUser = guild?.members.cache.get(user.DID)?.user
+                || discordClient.users.cache.get(user.DID);
+
+            if (!discordUser) {
+                try {
+                    discordUser = await discordClient.users.fetch(user.DID);
+                } catch (err) {
+                    warn(`Could not fetch Discord names for linked user ${user.DID}: ${err.message}`);
+                }
+            }
+
+            user.discordUsername = discordUser?.username || 'Unavailable';
+            user.globalUsername = discordUser?.globalName || 'Not set';
+        }
+    }
+
+    await Promise.all(Array.from(
+        { length: Math.min(10, users.length) },
+        () => loadNextUser()
+    ));
+    return users;
+}
+
+router.get('/', requireStaff(WEB_PERMISSIONS.VIEW_STAFF_PANEL), async (req, res) => {
+    const permissions = req.webPermissions;
+    const users = permissions.canManageServer
+        ? await addDiscordNamesToUsers(req.discordClient, req.db.getAllUsers())
+        : [];
     const recentMessages = req.db.getRecentBridgeMessages(25);
     const botGuilds = req.discordClient.guilds.cache.size;
-    const staffRoles = req.db.getAllStaffRoles();
-    const recentTickets = req.db.getAllTickets(10);
+    const recentTickets = permissions.canManageServer ? req.db.getAllTickets(10) : [];
     const ticketStats = process.env.STAFF_GUILD_ID
+        && permissions.canManageServer
         ? req.db.getTicketStats(process.env.STAFF_GUILD_ID)
         : { total: 0, open: 0, closed: 0 };
 
@@ -23,14 +58,13 @@ router.get('/', requireStaff(STAFF_LEVELS.SUPPORT), (req, res) => {
         user: req.session.user,
         users,
         recentMessages,
-        staffRoles,
         recentTickets,
         ticketStats,
         rconEnabled,
         rconStatus: rconEnabled ? rcon.status() : [],
         onlinePlayers: req.db.getOnlineGamePlayers(),
         recentGamePlayers: req.db.getRecentGamePlayers(25),
-        staffLabels: DatabaseManager.STAFF_LABELS,
+        permissions: req.webPermissions,
         stats: {
             totalUsers: users.length,
             botGuilds,
@@ -50,8 +84,12 @@ function rconOrError(req, res) {
     return rcon;
 }
 
-// Live player list (Support+)
-router.get('/rcon/players', requireStaff(STAFF_LEVELS.SUPPORT), async (req, res) => {
+// Live player list (Manage Server, Kick Members, or Ban Members)
+router.get('/rcon/players', requireStaff([
+    WEB_PERMISSIONS.MANAGE_SERVER,
+    WEB_PERMISSIONS.KICK_PLAYERS,
+    WEB_PERMISSIONS.BAN_PLAYERS
+]), async (req, res) => {
     const rcon = rconOrError(req, res);
     if (!rcon) return;
     try {
@@ -62,71 +100,135 @@ router.get('/rcon/players', requireStaff(STAFF_LEVELS.SUPPORT), async (req, res)
     }
 });
 
-// Announce (Moderator+)
-router.post('/rcon/announce', requireStaff(STAFF_LEVELS.MODERATOR), async (req, res) => {
+// Announce (Manage Server)
+router.post('/rcon/announce', requireStaff(WEB_PERMISSIONS.MANAGE_SERVER), async (req, res) => {
     const rcon = rconOrError(req, res);
     if (!rcon) return;
     const { message, server } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Missing message' });
     try {
         await rcon.announce(message.trim().slice(0, 300), server || null);
-        info(`Web RCON announce by ${req.session.user.username}: ${message}`);
+        info(`Web RCON announce by ${req.session.user.displayName || req.session.user.username}: ${message}`);
         res.json({ success: true });
     } catch (err) {
         res.status(502).json({ error: err.message });
     }
 });
 
-// Kick (Moderator+)
-router.post('/rcon/kick', requireStaff(STAFF_LEVELS.MODERATOR), async (req, res) => {
+// Kick (Kick Members)
+router.post('/rcon/kick', requireStaff(WEB_PERMISSIONS.KICK_PLAYERS), async (req, res) => {
     const rcon = rconOrError(req, res);
     if (!rcon) return;
-    const { agid, reason, server } = req.body;
+    const { agid, reason, evidenceUrl, server } = req.body;
     if (!isValidAgid(agid)) return res.status(400).json({ error: 'Invalid AGID' });
     try {
-        await rcon.kick(normalizeAgid(agid), (reason || '').slice(0, 200), server || null);
-        info(`Web RCON kick by ${req.session.user.username}: ${agid}`);
-        res.json({ success: true });
+        const { auditWarning } = await executeModerationAction(req.discordClient, {
+            action: 'In-game kick',
+            target: `AGID ${normalizeAgid(agid)}`,
+            actorName: req.session.user.displayName || req.session.user.username,
+            actorId: req.session.user.id,
+            reason,
+            maxReasonLength: 200,
+            evidenceUrl,
+            context: `Server: ${server || 'Primary'}`
+        }, () => rcon.kick(normalizeAgid(agid), reason.trim().slice(0, 200), server || null));
+        info(`Web RCON kick by ${req.session.user.displayName || req.session.user.username}: ${agid}`);
+        res.json({ success: true, auditWarning });
     } catch (err) {
-        res.status(502).json({ error: err.message });
+        const status = err instanceof ModerationActionError ? err.statusCode : 502;
+        res.status(status).json({ error: err.message });
     }
 });
 
-// Ban (Administrator)
-router.post('/rcon/ban', requireStaff(STAFF_LEVELS.ADMINISTRATOR), async (req, res) => {
+// Ban (Ban Members)
+router.post('/rcon/ban', requireStaff(WEB_PERMISSIONS.BAN_PLAYERS), async (req, res) => {
     const rcon = rconOrError(req, res);
     if (!rcon) return;
-    const { agid, hours, reason, server } = req.body;
+    const { agid, hours, reason, evidenceUrl, server } = req.body;
     if (!isValidAgid(agid)) return res.status(400).json({ error: 'Invalid AGID' });
+    const banHours = hours === undefined || hours === null || hours === '' ? 0 : Number(hours);
+    if (!Number.isSafeInteger(banHours) || banHours < 0) {
+        return res.status(400).json({ error: 'Ban duration must be a non-negative whole number of hours.' });
+    }
     try {
-        await rcon.ban(normalizeAgid(agid), parseInt(hours, 10) || 0, (reason || '').slice(0, 200), server || null);
-        info(`Web RCON ban by ${req.session.user.username}: ${agid}`);
-        res.json({ success: true });
+        const { auditWarning } = await executeModerationAction(req.discordClient, {
+            action: 'In-game ban',
+            target: `AGID ${normalizeAgid(agid)}`,
+            actorName: req.session.user.displayName || req.session.user.username,
+            actorId: req.session.user.id,
+            reason,
+            maxReasonLength: 200,
+            evidenceUrl,
+            context: `Duration: ${banHours === 0 ? 'Permanent' : `${banHours} hours`}; server: ${server || 'Primary'}`
+        }, () => rcon.ban(normalizeAgid(agid), banHours, reason.trim().slice(0, 200), server || null));
+        info(`Web RCON ban by ${req.session.user.displayName || req.session.user.username}: ${agid}`);
+        res.json({ success: true, auditWarning });
     } catch (err) {
-        res.status(502).json({ error: err.message });
+        const status = err instanceof ModerationActionError ? err.statusCode : 502;
+        res.status(status).json({ error: err.message });
     }
 });
 
-router.post('/users/:id/update', requireStaff(STAFF_LEVELS.MODERATOR), (req, res) => {
+router.post('/users/:id/update', requireStaff(WEB_PERMISSIONS.MANAGE_SERVER), (req, res) => {
     const discordId = req.params.id;
-    const { agid, marks } = req.body;
+    const { agid, marks, inventory } = req.body;
 
     const updateData = {};
-    if (agid !== undefined) updateData.agid = agid;
-    if (marks !== undefined) updateData.marks = parseInt(marks, 10);
+    if (agid !== undefined) {
+        if (typeof agid !== 'string' || !agid.trim()) {
+            return res.status(400).render('error', {
+                title: 'Invalid Account ID',
+                message: 'AGID must not be empty.',
+                user: req.session.user
+            });
+        }
+        updateData.agid = agid.trim();
+    }
+    if (marks !== undefined) {
+        const parsedMarks = Number(marks);
+        if (typeof marks !== 'string' || !/^\d+$/.test(marks.trim()) ||
+            !Number.isSafeInteger(parsedMarks) || parsedMarks < 0) {
+            return res.status(400).render('error', {
+                title: 'Invalid Marks',
+                message: 'Marks must be a non-negative whole number.',
+                user: req.session.user
+            });
+        }
+        updateData.marks = parsedMarks;
+    }
+    if (inventory !== undefined) {
+        let parsedInventory;
+        try {
+            parsedInventory = JSON.parse(inventory);
+        } catch {
+            return res.status(400).render('error', {
+                title: 'Invalid Inventory',
+                message: 'Inventory must be valid JSON.',
+                user: req.session.user
+            });
+        }
+        if (!Array.isArray(parsedInventory)) {
+            return res.status(400).render('error', {
+                title: 'Invalid Inventory',
+                message: 'Inventory must be a JSON array.',
+                user: req.session.user
+            });
+        }
+        updateData.inventory = parsedInventory;
+    }
 
     if (Object.keys(updateData).length > 0) {
         req.db.updateUser(discordId, updateData);
-        info(`Admin ${req.session.user.username} (${req.session.user.staffLabel}) updated user ${discordId}: ${JSON.stringify(updateData)}`);
+        info(`Admin ${req.session.user.displayName || req.session.user.username} (${req.session.user.staffLabel}) updated user ${discordId}: ${JSON.stringify(updateData)}`);
     }
 
     res.redirect('/admin');
 });
 
-router.post('/users/:id/delete', requireStaff(STAFF_LEVELS.ADMINISTRATOR), (req, res) => {
+router.post('/users/:id/delete', requireStaff(WEB_PERMISSIONS.MANAGE_SERVER), (req, res) => {
     const discordId = req.params.id;
     req.db.deleteUser(discordId);
-    info(`Admin ${req.session.user.username} (${req.session.user.staffLabel}) deleted user ${discordId}`);
+    info(`Admin ${req.session.user.displayName || req.session.user.username} (${req.session.user.staffLabel}) deleted user ${discordId}`);
     res.redirect('/admin');
 });
 
