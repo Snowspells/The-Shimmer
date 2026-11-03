@@ -59,6 +59,7 @@ Navigate to `/chat` on the web dashboard (requires login). The chat page include
 
 - **Message history** — The last 50 messages are loaded on connect
 - **Real-time updates** — New messages appear instantly via WebSocket
+- **Typing indicators** — Shows when other website users or Discord members are typing
 - **Source labels** — Each message shows its origin: `[Discord]` (blue), `[Game]` (green), or `[Web]` (purple)
 - **Online count** — Shows how many users are connected to the web chat
 - **Connection status** — Green dot when connected, red when disconnected. Auto-reconnects.

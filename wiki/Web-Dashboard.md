@@ -16,16 +16,28 @@ In production, set `WEB_BASE_URL` in your `.env` to match your domain (e.g. `htt
 
 ## Pages
 
+### Notifications
+
+Authenticated members see an updates bar directly below the navigation bar. It shows unread ticket messages, Marks and inventory changes, suggestion comments, and suggestion submissions or card updates. The bar refreshes automatically while the page is open.
+
+- Members see messages only for their own tickets; Staff in Training and higher see messages for tickets they can manage.
+- Marks and inventory notifications are private to the affected account.
+- When someone else (never the user themselves) changes a user's Marks or inventory, the user is told who made the change, and staff with Manage Server also see it in the bar (except the editor and the affected user). Opening the Staff Panel marks these as viewed. The change is also logged to `USER_CHANGE_LOG_CHANNEL_ID` when configured.
+- Staff and above can mute and unmute members in the web chat from the Staff Panel's **Web Chat Mutes** section (reason and evidence URL required), and mute players in-game from the RCON section.
+- Only Owners and the Developer can edit or delete linked accounts (AGID, Marks, Inventory) on the website; Staff in Training and Staff â€” and ordinary linked members â€” cannot, including for their own accounts. Every account edit (AGID, Marks, Inventory) and deletion requires a reason, which is shown in the notifications and posted to `USER_CHANGE_LOG_CHANNEL_ID`, and sent to the affected user by Discord DM (skipped if their DMs are closed); all RCON and web chat moderation actions already require a reason and evidence URL. Staff see the Linked Users table read-only; its edit boxes and Save/Delete buttons appear only for Owners and the Developer. Self-assignable changes will follow the same rule when implemented.
+- Linked members can see suggestion-board updates and comments, matching access to the board.
+- Opening the related ticket, the Suggestions board, or the dashboard marks those accessible notifications as viewed and reduces the unread count.
+
 ### Home (`/`)
 
 The landing page for The Shimmer. It displays:
 
 - **The Shimmer tagline** and a brief description of what the platform does
 - **Three feature cards:**
-  - **Account Linking** — Link Discord to your in-game identity
-  - **Global Chat Bridge** — Cross-platform chat between Discord and the game
-  - **Community Hub** — Central place for stats and account management
-- **Login button** — "Login with Discord" if not logged in, or "Go to Dashboard" if already authenticated
+  - **Account Linking** â€” Link Discord to your in-game identity
+  - **Global Chat Bridge** â€” Cross-platform chat between Discord and the game
+  - **Community Hub** â€” Central place for stats and account management
+- **Login button** â€” "Login with Discord" if not logged in, or "Go to Dashboard" if already authenticated
 
 ---
 
@@ -102,14 +114,14 @@ The bot needs View Channel, Send Messages, Read Message History, and Add Reactio
 
 *Requires login.*
 
-The page is titled **Live Communication**. Users can open one ticket at a time, continue or close it, and review previous transcripts. New tickets create a private DM conversation with the bot; messages sent in the DM and on the website appear in the same conversation. Staff can reply to and close tickets from the website.
+The page is titled **Live Communication**. Users can open one ticket at a time, continue or close it, and review previous transcripts. A reason is required to close a ticket. New tickets create a private DM conversation with the bot; messages sent in the DM and on the website appear in the same conversation. Staff reply to and close tickets from Ticket Management, and can also open a ticket for themselves here.
 
 - Staff in Training and higher see and manage all tickets for the configured staff guild
 - Members see only tickets they created
 - Existing channel-based tickets remain read-only history
 - **Filter buttons:** All, Open, Closed
 - **Live updates:** Open conversations refresh automatically
-- Closed DM tickets retain a transcript
+- Closing a DM ticket saves its transcript and sends the HTML file and close reason to the ticket creator by DM
 
 The bot must be able to DM ticket creators. Users who cannot receive DMs cannot open a DM-backed ticket.
 
@@ -145,7 +157,13 @@ Chat moderation endpoints remain available to Staff and above; each moderation a
 
 *Requires login and a linked Discord/game account.*
 
-The Trello-style progress board is visible to all linked members. Members can submit suggestions and follow every card through **Suggested**, **Under Review**, **Approved**, **In Progress**, and **Completed**. Owners and the configured Developer can decline a card with a required reason; each decision and reason is posted to `SUGGESTION_LOG_CHANNEL_ID`. The Developer can create, edit, move, and delete cards. Progress history stays on the website.
+The Trello-style progress board is visible to all linked members. Members can submit suggestions and follow every card through **Suggested**, **Under Review**, **Approved**, **In Progress**, and **Completed**. The Completed column is collapsed by default and can be expanded without changing its board width. Completed cards are read-only for everyone except the configured Developer: only the Developer can edit, comment on, or delete them. Owners and the configured Developer can change the status of cards that are not yet Completed; only the Developer can edit card details, create managed cards, or delete cards. The submitter, Owners, and the configured Developer can leave timestamped comments on non-completed cards. Suggestion submissions and card creations, edits, status changes, declines, and deletions are posted to `SUGGESTION_LOG_CHANNEL_ID`; comments are not logged there. Comments and progress history stay on the website.
+
+### Bug Tracker (`/bugs`)
+
+*Requires login and a linked Discord/game account.*
+
+Any linked member can report a bug (title, severity, details) and comment on any report. Reports move through **New Bug Report**, **Investigating**, **Identified**, and **Closed**. Only the Developer can edit a report's title, details, severity, or status, or delete it. Deleting requires a reason; a deleted bug has no card, only a log entry (with the reason) in the bug log channel. Bug notifications go only to the Developer (`DEVELOPER_USER_ID`): the notification bar shows each new report and each comment, and the Developer is sent a Discord DM only for a new report. Every new report, status/severity/edit change, and deletion (with its required reason) is posted to `BUG_LOG_CHANNEL_ID`; comments are not logged there.
 
 ---
 
@@ -170,7 +188,7 @@ The navigation bar appears on every page and includes:
 | **Home** | Always | Links to `/` |
 | **Dashboard** | Logged in | Links to `/dashboard` |
 | **Mini Chat** | Logged in | Compact chat widget appears on authenticated pages |
-| **Tickets** | Logged in | Links to `/tickets` — view your tickets or all tickets (staff) |
+| **Tickets** | Logged in | Links to `/tickets` â€” view your tickets or all tickets (staff) |
 | **Staff Panel** | Staff only | Links to `/admin` (only shown if the user has a staff level) |
 | **Reaction Roles** | Owner and Developer | Links to `/admin/reaction-roles` to manage Discord reaction-role posts |
 | **Staff Badge** | Staff only | Color-coded badge showing the user's tier (e.g. "Moderator") |

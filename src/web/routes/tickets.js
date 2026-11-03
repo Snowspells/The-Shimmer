@@ -4,6 +4,7 @@ const { warn, error } = require('../../utils/Console');
 
 const router = express.Router();
 const MAX_TICKET_MESSAGE_LENGTH = 1900;
+const MAX_TICKET_CLOSE_REASON_LENGTH = 1000;
 
 function getTicketId(req, res) {
     const ticketId = Number.parseInt(req.params.id, 10);
@@ -41,7 +42,7 @@ function escapeHtml(value) {
 function buildTranscriptHtml(ticket, messages) {
     const rows = messages.map(message => `
         <article>
-            <header><strong>${escapeHtml(message.author_name)}</strong> · ${escapeHtml(message.created_at)}</header>
+            <header><strong>${escapeHtml(message.author_name)}</strong> Â· ${escapeHtml(message.created_at)}</header>
             <p>${escapeHtml(message.content).replace(/\n/g, '<br>')}</p>
         </article>
     `).join('\n');
@@ -119,6 +120,12 @@ router.get('/:id', requireAuth, attachWebPermissions, (req, res) => {
         return renderAccessError(res, req.session.user, 403, '403 - Forbidden', 'You cannot access this ticket.');
     }
 
+    req.db.markNotificationsViewed(req.session.user.id, {
+        category: 'ticket_message',
+        targetId: ticketId,
+        scope: 'tickets',
+        includeRecipient: true
+    });
     const messages = ticket.ticket_mode === 'dm' ? req.db.getTicketMessages(ticketId) : [];
     res.render('ticket-detail', {
         user: req.session.user,
@@ -196,9 +203,16 @@ router.post('/:id/close', requireAuth, attachWebPermissions, async (req, res) =>
     if (ticket.ticket_mode !== 'dm') return res.status(409).json({ error: 'Legacy channel tickets are read-only.' });
     if (ticket.status !== 'open') return res.status(409).json({ error: 'This ticket is already closed.' });
 
+    const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+    if (!reason || reason.length > MAX_TICKET_CLOSE_REASON_LENGTH) {
+        return res.status(400).json({
+            error: `A close reason is required and must be ${MAX_TICKET_CLOSE_REASON_LENGTH} characters or fewer.`
+        });
+    }
+
     const user = req.session.user;
     const displayName = user.displayName || user.username;
-    const closingMessage = `${displayName} closed this ticket.`;
+    const closingMessage = `${displayName} closed this ticket. Reason: ${reason}`;
     if (!req.db.closeTicket(ticket.id, user.id, displayName)) {
         return res.status(500).json({ error: 'Could not close this ticket.' });
     }
@@ -207,17 +221,40 @@ router.post('/:id/close', requireAuth, attachWebPermissions, async (req, res) =>
         warn(`Ticket #${ticket.id} was closed but its closing message could not be saved.`);
     }
     const messages = req.db.getTicketMessages(ticket.id);
-    req.db.saveTranscript(ticket.id, ticket.guild_id, buildTranscriptHtml(ticket, messages), messages.length);
+    const transcriptHtml = buildTranscriptHtml(ticket, messages);
+    req.db.saveTranscript(ticket.id, ticket.guild_id, transcriptHtml, messages.length);
+    await req.discordClient.ticketManager.logTicketEvent(ticket, {
+        title: 'Ticket Closed',
+        color: 0xed4245,
+        fields: [
+            { name: 'Ticket', value: `#${ticket.id}`, inline: true },
+            { name: 'Closed By', value: `<@${user.id}>`, inline: true },
+            { name: 'Originally By', value: `<@${ticket.creator_id}>`, inline: true },
+            { name: 'Messages', value: `${messages.length}`, inline: true },
+            { name: 'Close Reason', value: reason.slice(0, 1024) }
+        ]
+    });
+    let transcriptDelivered = true;
     try {
         const discordUser = await req.discordClient.users.fetch(ticket.creator_id);
         await discordUser.send({
-            content: `Ticket #${ticket.id} has been closed. You can review its transcript on the Live Communication page.`,
+            content: `Ticket #${ticket.id} has been closed. Reason: ${reason}\nIts transcript is attached as an HTML file.`,
+            files: [{
+                attachment: Buffer.from(transcriptHtml, 'utf8'),
+                name: `ticket-${ticket.id}-transcript.html`
+            }],
             allowedMentions: { parse: [] }
         });
     } catch (err) {
-        warn(`Ticket #${ticket.id} closed, but Discord could not deliver the DM notification: ${err.message}`);
+        transcriptDelivered = false;
+        warn(`Ticket #${ticket.id} closed, but Discord could not deliver its transcript DM: ${err.message}`);
     }
-    return res.json({ success: true, status: 'closed' });
+    return res.json({
+        success: true,
+        status: 'closed',
+        transcriptDelivered,
+        warning: transcriptDelivered ? null : 'The ticket was closed, but Discord could not send the transcript DM. It remains available on the Live Communication page.'
+    });
 });
 
 router.get('/:id/transcript', requireAuth, attachWebPermissions, (req, res) => {

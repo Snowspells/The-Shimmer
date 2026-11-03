@@ -1,7 +1,59 @@
 const express = require('express');
 const { info, warn, error } = require('../../utils/Console');
+const { requireAuth, attachWebPermissions } = require('../middleware/auth');
 
 const router = express.Router();
+
+router.get('/notifications', requireAuth, attachWebPermissions, (req, res) => {
+    let beforeId = null;
+    if (req.query.before !== undefined) {
+        beforeId = Number(req.query.before);
+        if (!Number.isSafeInteger(beforeId) || beforeId < 1) {
+            return res.status(400).json({ error: 'Invalid notification cursor.' });
+        }
+    }
+    const userId = req.session.user.id;
+    const linkedMember = Boolean(req.db.getUserByDiscordId(userId));
+    const access = {
+        canManageTickets: Boolean(req.webPermissions?.canManageTickets),
+        isLinkedMember: linkedMember,
+        canViewUserChanges: Boolean(req.webPermissions?.canManageServer)
+    };
+    const categories = req.db.getUnreadNotificationCounts(userId, access);
+    const counts = Object.create(null);
+    let total = 0;
+    for (const { category, count } of categories) {
+        counts[category] = count;
+        total += count;
+    }
+    const fetchedNotifications = req.db.getUnreadNotifications(userId, access, 13, beforeId);
+    const hasMore = fetchedNotifications.length > 12;
+    const latest = fetchedNotifications.slice(0, 12).map(notification => {
+        const href = notification.category.startsWith('bug_')
+            ? (notification.title.endsWith(' deleted')
+                ? '/bugs'
+                : `/bugs#bug-${encodeURIComponent(notification.target_id)}`)
+            : notification.scope === 'user_changes'
+            ? '/admin/users'
+            : notification.category === 'ticket_message'
+            ? `/tickets/${encodeURIComponent(notification.target_id)}`
+            : notification.category === 'marks_changed'
+                ? '/dashboard#account-marks'
+                : notification.category === 'inventory_changed'
+                    ? '/dashboard#account-inventory'
+                    : notification.title.endsWith(' deleted')
+                        ? '/suggestions#suggestions-board'
+                        : `/suggestions#suggestion-${encodeURIComponent(notification.target_id)}`;
+        return { ...notification, href };
+    });
+    res.json({
+        total,
+        counts,
+        notifications: latest,
+        hasMore,
+        nextBeforeId: hasMore ? latest[latest.length - 1]?.id || null : null
+    });
+});
 
 // Legacy HTTP inbound relay for custom game servers that can POST. Path of
 // Titans servers cannot host HTTP; their in-game chat is ingested from the

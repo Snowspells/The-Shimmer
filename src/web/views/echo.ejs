@@ -1,0 +1,56 @@
+<%- include('partials/header', { title: 'Echoes', user }) %>
+
+<div class="dashboard">
+    <h1>Echoes</h1>
+    <% if (!linkedAccount) { %>
+        <div class="not-linked">
+            <h2>Account Not Linked</h2>
+            <p>Link your game account to collect and equip Echoes.</p>
+        </div>
+    <% } else { %>
+        <p>Equip one Echo of each tier per species. When that species dies, each equipped Echo may break:
+            <%= tiers.map(t => `${t.singular} ${Math.round(t.breakChance * 100)}%`).join(', ') %>.</p>
+
+        <% if (items.length === 0) { %>
+            <div class="empty-state"><p>You have no Echoes yet. Visit the <a href="/shop">Shop</a>.</p></div>
+        <% } %>
+
+        <% species.forEach(function(sp) { %>
+            <div class="inventory-section">
+                <h2><%= sp.name %></h2>
+                <div class="inventory-grid">
+                    <% tiers.forEach(function(tier) {
+                        const row = assignments.find(a => a.species.toLowerCase() === sp.name.toLowerCase() && a.tier === tier.folder);
+                        const equipped = row && items.find(i => i.id === row.item_id);
+                        const options = items.filter(i => i.tier === tier.folder && i.definition); %>
+                        <div class="inventory-item">
+                            <strong><%= tier.singular %></strong><br>
+                            <% if (equipped) { %>
+                                <span><%= equipped.name %></span>
+                                <form method="post" action="/echo/unassign" style="display:inline">
+                                    <input type="hidden" name="itemId" value="<%= equipped.id %>">
+                                    <button class="btn btn-sm" type="submit">Unequip</button>
+                                </form>
+                            <% } else { %>
+                                <span>Empty</span>
+                            <% } %>
+                            <% if (options.length > 0) { %>
+                                <form method="post" action="/echo/assign">
+                                    <input type="hidden" name="species" value="<%= sp.name %>">
+                                    <select name="itemId" aria-label="<%= tier.singular %> for <%= sp.name %>">
+                                        <% options.forEach(function(opt) { %>
+                                            <option value="<%= opt.id %>"><%= opt.name %></option>
+                                        <% }); %>
+                                    </select>
+                                    <button class="btn btn-sm btn-primary" type="submit">Equip</button>
+                                </form>
+                            <% } %>
+                        </div>
+                    <% }); %>
+                </div>
+            </div>
+        <% }); %>
+    <% } %>
+</div>
+
+<%- include('partials/footer') %>

@@ -5,12 +5,19 @@
         <h1>Staff Panel</h1>
         <span class="staff-badge staff-level-<%= user.staffLevel %>"><%= user.staffLabel %></span>
     </div>
+    <%- include('partials/admin-nav', { active: 'overview', permissions }) %>
 
     <div class="stats-grid">
         <% if (permissions.canManageServer) { %>
         <div class="stat-card">
             <h3>Linked Users</h3>
             <p class="stat-value"><%= stats.totalUsers %></p>
+        </div>
+        <% } %>
+        <% if (permissions.canManageTickets) { %>
+        <div class="stat-card">
+            <h3>Open Tickets</h3>
+            <p class="stat-value"><%= stats.openTickets %></p>
         </div>
         <% } %>
         <div class="stat-card">
@@ -23,286 +30,23 @@
         </div>
     </div>
 
-    <% if (permissions.canManageServer || permissions.canKickPlayers || permissions.canBanPlayers) { %>
-    <div class="admin-section">
-        <h2>Path of Titans Server (RCON)</h2>
-        <% if (!rconEnabled) { %>
-            <div class="empty-state">
-                <p>RCON is not configured. Set <code>RCON_HOST</code>, <code>RCON_PORT</code> and <code>RCON_PASSWORD</code> to enable live server controls.</p>
-            </div>
-        <% } else { %>
-            <div class="message-log" style="margin-bottom: 1rem;">
-                <% rconStatus.forEach(function(s) { %>
-                    <div class="message-entry">
-                        <span class="message-source">[<%= s.name %>]</span>
-                        <span class="message-content"><%= s.host %>:<%= s.port %></span>
-                        <span class="message-time"><%= s.connected ? '🟢 connected' : '🔴 disconnected' %></span>
-                    </div>
-                <% }); %>
-            </div>
-
-            <% if (permissions.canManageServer || permissions.canKickPlayers || permissions.canBanPlayers) { %>
-                <h3>Live Players</h3>
-                <button type="button" class="btn btn-sm btn-primary" onclick="refreshPlayers()">Refresh live list</button>
-                <pre id="rcon-players" class="message-log" style="white-space: pre-wrap; margin-top: 0.5rem;">Click "Refresh live list" to query the server.</pre>
-            <% } %>
-
-            <% if (permissions.canManageServer) { %>
-                <h3 style="margin-top: 1rem;">Announce to Server</h3>
-                <form class="inline-form" onsubmit="return rconAnnounce(event)">
-                    <input type="text" id="announce-message" class="input-sm" placeholder="Message to broadcast in-game" style="min-width: 280px;" required>
-                    <button type="submit" class="btn btn-sm btn-primary">Send</button>
-                </form>
-            <% } %>
-
-            <% if (permissions.canKickPlayers) { %>
-                <h3 style="margin-top: 1rem;">Kick Player</h3>
-                <form class="inline-form" onsubmit="return rconKick(event)">
-                    <input type="text" id="kick-agid" class="input-sm" placeholder="AGID (123-456-789)" required>
-                    <input type="text" id="kick-reason" class="input-sm" placeholder="Reason" maxlength="200" required>
-                    <input type="url" id="kick-evidence" class="input-sm" placeholder="Evidence URL" required>
-                    <button type="submit" class="btn btn-sm btn-danger">Kick</button>
-                </form>
-            <% } %>
-
-            <% if (permissions.canBanPlayers) { %>
-                <h3 style="margin-top: 1rem;">Ban Player</h3>
-                <form class="inline-form" onsubmit="return rconBan(event)">
-                    <input type="text" id="ban-agid" class="input-sm" placeholder="AGID (123-456-789)" required>
-                    <input type="number" id="ban-hours" class="input-sm input-number" placeholder="Hours (0=perm)" value="0">
-                    <input type="text" id="ban-reason" class="input-sm" placeholder="Reason" maxlength="200" required>
-                    <input type="url" id="ban-evidence" class="input-sm" placeholder="Evidence URL" required>
-                    <button type="submit" class="btn btn-sm btn-danger">Ban</button>
-                </form>
-            <% } %>
-
-            <h3 style="margin-top: 1rem;">Recently Seen Players</h3>
-            <% if (recentGamePlayers.length > 0) { %>
-                <div class="table-wrapper">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Player</th>
-                                <th>AGID</th>
-                                <th>Status</th>
-                                <th>Last Seen</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <% recentGamePlayers.forEach(function(p) { %>
-                                <tr>
-                                    <td><%= p.player_name || 'Unknown' %></td>
-                                    <td><code><%= p.agid %></code></td>
-                                    <td><%= p.online ? '🟢 online' : 'offline' %></td>
-                                    <td><%= p.last_seen ? new Date(p.last_seen).toLocaleString() : 'N/A' %></td>
-                                </tr>
-                            <% }); %>
-                        </tbody>
-                    </table>
-                </div>
-            <% } else { %>
-                <div class="empty-state"><p>No in-game players recorded yet.</p></div>
-            <% } %>
-
-            <script>
-                async function refreshPlayers() {
-                    const el = document.getElementById('rcon-players');
-                    el.textContent = 'Querying...';
-                    try {
-                        const r = await fetch('/admin/rcon/players');
-                        const data = await r.json();
-                        el.textContent = r.ok ? (data.players || '(empty)') : ('Error: ' + (data.error || r.status));
-                    } catch (e) {
-                        el.textContent = 'Request failed: ' + e.message;
-                    }
-                }
-                async function postRcon(path, body) {
-                    const r = await fetch(path, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body)
-                    });
-                    const data = await r.json().catch(() => ({}));
-                    if (!r.ok) { alert('Failed: ' + (data.error || r.status)); return false; }
-                    if (data.auditWarning) alert(data.auditWarning);
-                    return true;
-                }
-                async function rconAnnounce(e) {
-                    e.preventDefault();
-                    const message = document.getElementById('announce-message').value;
-                    if (await postRcon('/admin/rcon/announce', { message })) {
-                        document.getElementById('announce-message').value = '';
-                        alert('Announcement sent.');
-                    }
-                    return false;
-                }
-                async function rconKick(e) {
-                    e.preventDefault();
-                    const agid = document.getElementById('kick-agid').value;
-                    const reason = document.getElementById('kick-reason').value;
-                    const evidenceUrl = document.getElementById('kick-evidence').value;
-                    if (await postRcon('/admin/rcon/kick', { agid, reason, evidenceUrl })) {
-                        alert('Kick sent.');
-                    }
-                    return false;
-                }
-                async function rconBan(e) {
-                    e.preventDefault();
-                    const agid = document.getElementById('ban-agid').value;
-                    const hours = document.getElementById('ban-hours').value;
-                    const reason = document.getElementById('ban-reason').value;
-                    const evidenceUrl = document.getElementById('ban-evidence').value;
-                    if (!confirm('Ban ' + agid + '?')) return false;
-                    if (await postRcon('/admin/rcon/ban', { agid, hours, reason, evidenceUrl })) {
-                        alert('Ban sent.');
-                    }
-                    return false;
-                }
-            </script>
+    <div class="stats-grid">
+        <% if (permissions.canKickPlayers || permissions.canBanPlayers || permissions.canMutePlayers) { %>
+        <a class="stat-card" href="/admin/server"><h3>Server Controls</h3><p>Live players, announcements, kick, mute and ban.</p></a>
+        <% } %>
+        <% if (permissions.canManageServer) { %>
+        <a class="stat-card" href="/admin/users"><h3>Linked Users</h3><p>Review and edit linked accounts.</p></a>
+        <% } %>
+        <% if (permissions.canManageTickets) { %>
+        <a class="stat-card" href="/admin/tickets"><h3>Ticket Management</h3><p>Ticket inbox, stats and responses.</p></a>
+        <% } %>
+        <% if (permissions.canManageChat) { %>
+        <a class="stat-card" href="/admin/chat"><h3>Chat Moderation</h3><p>Web chat mutes and bridge log.</p></a>
+        <% } %>
+        <% if (permissions.canRefreshCommands) { %>
+        <a class="stat-card" href="/admin/reaction-roles"><h3>Reaction Roles</h3><p>Manage reaction role posts.</p></a>
         <% } %>
     </div>
-    <% } %>
-
-    <% if (permissions.canManageServer) { %>
-    <div class="admin-section">
-        <h2>Linked Users</h2>
-        <% if (users.length > 0) { %>
-            <div class="table-wrapper">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Discord ID</th>
-                            <th>Discord Username</th>
-                            <th>Global Username</th>
-                            <th>AGID</th>
-                            <th>Marks</th>
-                            <th>Inventory (JSON)</th>
-                            <th>Linked Since</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <% users.forEach(function(u) { %>
-                            <tr>
-                                <td><code><%= u.DID %></code></td>
-                                <td><%= u.discordUsername %></td>
-                                <td><%= u.globalUsername %></td>
-                                <td>
-                                        <input form="update-user-<%= u.DID %>" type="text" name="agid" value="<%= u.agid %>" class="input-sm">
-                                </td>
-                                <td>
-                                        <input form="update-user-<%= u.DID %>" type="number" name="marks" min="0" step="1" required value="<%= u.marks %>" class="input-sm input-number">
-                                </td>
-                                <td>
-                                        <textarea form="update-user-<%= u.DID %>" name="inventory" rows="3" class="input-sm" aria-label="Inventory JSON for <%= u.DID %>"><%= JSON.stringify(u.inventory) %></textarea>
-                                </td>
-                                <td><%= u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A' %></td>
-                                <td class="actions-cell">
-                                    <form id="update-user-<%= u.DID %>" method="POST" action="/admin/users/<%= u.DID %>/update"></form>
-                                    <button type="submit" form="update-user-<%= u.DID %>" class="btn btn-sm btn-primary">Save</button>
-                                    <form method="POST" action="/admin/users/<%= u.DID %>/delete" class="inline-form"
-                                          onsubmit="return confirm('Delete this user?')">
-                                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        <% }); %>
-                    </tbody>
-                </table>
-            </div>
-        <% } else { %>
-            <div class="empty-state">
-                <p>No linked users yet.</p>
-            </div>
-        <% } %>
-    </div>
-    <% } %>
-
-    <% if (permissions.canManageServer) { %>
-    <div class="admin-section">
-        <h2>Tickets Overview</h2>
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3>Total Tickets</h3>
-                <p class="stat-value"><%= ticketStats.total %></p>
-            </div>
-            <div class="stat-card">
-                <h3>Open</h3>
-                <p class="stat-value" style="color: #57f287;"><%= ticketStats.open %></p>
-            </div>
-            <div class="stat-card">
-                <h3>Closed</h3>
-                <p class="stat-value"><%= ticketStats.closed %></p>
-            </div>
-        </div>
-        <% if (recentTickets.length > 0) { %>
-            <h3 style="margin-top: 1rem;">Recent Tickets</h3>
-            <div class="table-wrapper">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Subject</th>
-                            <th>Creator</th>
-                            <th>Status</th>
-                            <th>Created</th>
-                            <th>Communication</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <% recentTickets.forEach(function(ticket) { %>
-                            <tr>
-                                <td><code>#<%= ticket.id %></code></td>
-                                <td><%= ticket.subject %></td>
-                                <td><%= ticket.creator_name %></td>
-                                <td>
-                                    <span class="ticket-status ticket-<%= ticket.status %>"><%= ticket.status %></span>
-                                </td>
-                                <td><%= ticket.created_at ? new Date(ticket.created_at).toLocaleDateString() : 'N/A' %></td>
-                                <td>
-                                    <% if (ticket.ticket_mode === 'dm' && ticket.status === 'open') { %>
-                                        <a href="/tickets/<%= ticket.id %>" class="btn btn-sm btn-primary">Respond</a>
-                                    <% } else if (ticket.ticket_mode === 'dm' || ticket.status === 'closed') { %>
-                                        <a href="/tickets/<%= ticket.id %>/transcript" class="btn btn-sm">View</a>
-                                    <% } else { %>
-                                        <span class="text-muted">—</span>
-                                    <% } %>
-                                </td>
-                            </tr>
-                        <% }); %>
-                    </tbody>
-                </table>
-            </div>
-            <a href="/tickets" class="btn" style="margin-top: 0.75rem;">View All Tickets &rarr;</a>
-        <% } else { %>
-            <div class="empty-state">
-                <p>No tickets yet. Use the <code>/ticketsetup panel</code> command in Discord to create a ticket panel.</p>
-            </div>
-        <% } %>
-    </div>
-    <% } %>
-
-    <% if (permissions.canManageChat) { %>
-    <div class="admin-section">
-        <h2>Recent Chat Bridge Messages</h2>
-        <% if (recentMessages.length > 0) { %>
-            <div class="message-log">
-                <% recentMessages.forEach(function(msg) { %>
-                    <div class="message-entry message-<%= msg.source %>">
-                        <span class="message-source">[<%= msg.source === 'discord' ? 'Discord' : 'Game' %>]</span>
-                        <span class="message-author"><%= msg.author_name %></span>
-                        <span class="message-content"><%= msg.content %></span>
-                        <span class="message-time"><%= new Date(msg.timestamp).toLocaleTimeString() %></span>
-                    </div>
-                <% }); %>
-            </div>
-        <% } else { %>
-            <div class="empty-state">
-                <p>No chat bridge messages yet.</p>
-            </div>
-        <% } %>
-    </div>
-    <% } %>
 </div>
 
 <%- include('partials/footer') %>

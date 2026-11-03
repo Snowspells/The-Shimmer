@@ -1,0 +1,193 @@
+<%- include('../partials/header', { title: 'Server Controls - Staff Panel', user }) %>
+
+<div class="admin">
+    <div class="admin-header">
+        <h1>Server Controls</h1>
+        <span class="staff-badge staff-level-<%= user.staffLevel %>"><%= user.staffLabel %></span>
+    </div>
+    <%- include('../partials/admin-nav', { active: 'server', permissions }) %>
+
+    <% if (permissions.canKickPlayers || permissions.canBanPlayers || permissions.canMutePlayers) { %>
+    <div class="admin-section">
+        <h2>Path of Titans Server (RCON)</h2>
+        <% if (!rconEnabled) { %>
+            <div class="empty-state">
+                <p>RCON is not configured. Set <code>RCON_HOST</code>, <code>RCON_PORT</code> and <code>RCON_PASSWORD</code> to enable live server controls.</p>
+            </div>
+        <% } else { %>
+            <% if (permissions.canUseRcon) { %>
+            <div class="message-log" style="margin-bottom: 1rem;">
+                <% rconStatus.forEach(function(s) { %>
+                    <div class="message-entry">
+                        <span class="message-source">[<%= s.name %>]</span>
+                        <span class="message-content"><%= s.host %>:<%= s.port %></span>
+                        <span class="message-time"><%= s.connected ? 'ðŸŸ¢ connected' : 'ðŸ”´ disconnected' %></span>
+                    </div>
+                <% }); %>
+            </div>
+            <% } %>
+
+            <% if (permissions.canKickPlayers || permissions.canBanPlayers || permissions.canMutePlayers) { %>
+                <h3>Live Players</h3>
+                <button type="button" class="btn btn-sm btn-primary" onclick="refreshPlayers()">Refresh live list</button>
+                <pre id="rcon-players" class="message-log" style="white-space: pre-wrap; margin-top: 0.5rem;">Click "Refresh live list" to query the server.</pre>
+            <% } %>
+
+            <% if (permissions.canUseRcon) { %>
+                <h3 style="margin-top: 1rem;">Announce to Server</h3>
+                <form class="inline-form" onsubmit="return rconAnnounce(event)">
+                    <input type="text" id="announce-message" class="input-sm" placeholder="Message to broadcast in-game" required>
+                    <button type="submit" class="btn btn-sm btn-primary">Send</button>
+                </form>
+            <% } %>
+
+            <% if (permissions.canKickPlayers) { %>
+                <h3 style="margin-top: 1rem;">Kick Player</h3>
+                <form class="inline-form" onsubmit="return rconKick(event)">
+                    <input type="text" id="kick-agid" class="input-sm" placeholder="AGID (123-456-789)" required>
+                    <input type="text" id="kick-reason" class="input-sm" placeholder="Reason" maxlength="200" required>
+                    <input type="url" id="kick-evidence" class="input-sm" placeholder="Evidence URL" required>
+                    <button type="submit" class="btn btn-sm btn-danger">Kick</button>
+                </form>
+            <% } %>
+
+            <% if (permissions.canMutePlayers) { %>
+                <h3 style="margin-top: 1rem;">Mute Player</h3>
+                <form class="inline-form" onsubmit="return rconMute(event)">
+                    <input type="text" id="mute-agid" class="input-sm" placeholder="AGID (123-456-789)" required>
+                    <input type="number" id="mute-minutes" class="input-sm input-number" min="0" max="525600" placeholder="Minutes (0=perm)" value="0">
+                    <input type="text" id="mute-reason" class="input-sm" placeholder="Reason" maxlength="200" required>
+                    <input type="url" id="mute-evidence" class="input-sm" placeholder="Evidence URL" required>
+                    <button type="submit" class="btn btn-sm btn-danger">Mute</button>
+                </form>
+                <h3 style="margin-top: 1rem;">Unmute Player</h3>
+                <form class="inline-form" onsubmit="return rconUnmute(event)">
+                    <input type="text" id="unmute-agid" class="input-sm" placeholder="AGID (123-456-789)" required>
+                    <input type="text" id="unmute-reason" class="input-sm" placeholder="Reason" maxlength="200" required>
+                    <input type="url" id="unmute-evidence" class="input-sm" placeholder="Evidence URL" required>
+                    <button type="submit" class="btn btn-sm btn-primary">Unmute</button>
+                </form>
+            <% } %>
+
+            <% if (permissions.canBanPlayers) { %>
+                <h3 style="margin-top: 1rem;">Ban Player</h3>
+                <form class="inline-form" onsubmit="return rconBan(event)">
+                    <input type="text" id="ban-agid" class="input-sm" placeholder="AGID (123-456-789)" required>
+                    <input type="number" id="ban-hours" class="input-sm input-number" placeholder="Hours (0=perm)" value="0">
+                    <input type="text" id="ban-reason" class="input-sm" placeholder="Reason" maxlength="200" required>
+                    <input type="url" id="ban-evidence" class="input-sm" placeholder="Evidence URL" required>
+                    <button type="submit" class="btn btn-sm btn-danger">Ban</button>
+                </form>
+            <% } %>
+
+            <h3 style="margin-top: 1rem;">Recently Seen Players</h3>
+            <% if (recentGamePlayers.length > 0) { %>
+                <div class="table-wrapper">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>AGID</th>
+                                <th>Status</th>
+                                <th>Last Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% recentGamePlayers.forEach(function(p) { %>
+                                <tr>
+                                    <td data-label="Player"><%= p.player_name || 'Unknown' %></td>
+                                    <td data-label="AGID"><code><%= p.agid %></code></td>
+                                    <td data-label="Status"><%= p.online ? 'ðŸŸ¢ online' : 'offline' %></td>
+                                    <td data-label="Last Seen"><%- timeTag(p.last_seen) %></td>
+                                </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                </div>
+            <% } else { %>
+                <div class="empty-state"><p>No in-game players recorded yet.</p></div>
+            <% } %>
+
+            <script>
+                async function refreshPlayers() {
+                    const el = document.getElementById('rcon-players');
+                    el.textContent = 'Querying...';
+                    try {
+                        const r = await fetch('/admin/rcon/players');
+                        const data = await r.json();
+                        el.textContent = r.ok ? (data.players || '(empty)') : ('Error: ' + (data.error || r.status));
+                    } catch (e) {
+                        el.textContent = 'Request failed: ' + e.message;
+                    }
+                }
+                async function postRcon(path, body) {
+                    const r = await fetch(path, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await r.json().catch(() => ({}));
+                    if (!r.ok) { alert('Failed: ' + (data.error || r.status)); return false; }
+                    if (data.auditWarning) alert(data.auditWarning);
+                    return true;
+                }
+                async function rconAnnounce(e) {
+                    e.preventDefault();
+                    const message = document.getElementById('announce-message').value;
+                    if (await postRcon('/admin/rcon/announce', { message })) {
+                        document.getElementById('announce-message').value = '';
+                        alert('Announcement sent.');
+                    }
+                    return false;
+                }
+                async function rconKick(e) {
+                    e.preventDefault();
+                    const agid = document.getElementById('kick-agid').value;
+                    const reason = document.getElementById('kick-reason').value;
+                    const evidenceUrl = document.getElementById('kick-evidence').value;
+                    if (await postRcon('/admin/rcon/kick', { agid, reason, evidenceUrl })) {
+                        alert('Kick sent.');
+                    }
+                    return false;
+                }
+                async function rconMute(e) {
+                    e.preventDefault();
+                    const agid = document.getElementById('mute-agid').value;
+                    const minutes = document.getElementById('mute-minutes').value;
+                    const reason = document.getElementById('mute-reason').value;
+                    const evidenceUrl = document.getElementById('mute-evidence').value;
+                    if (await postRcon('/admin/rcon/mute', { agid, minutes, reason, evidenceUrl })) {
+                        alert('Mute sent.');
+                    }
+                    return false;
+                }
+                async function rconUnmute(e) {
+                    e.preventDefault();
+                    const agid = document.getElementById('unmute-agid').value;
+                    const reason = document.getElementById('unmute-reason').value;
+                    const evidenceUrl = document.getElementById('unmute-evidence').value;
+                    if (await postRcon('/admin/rcon/unmute', { agid, reason, evidenceUrl })) {
+                        alert('Unmute sent.');
+                    }
+                    return false;
+                }
+                async function rconBan(e) {
+                    e.preventDefault();
+                    const agid = document.getElementById('ban-agid').value;
+                    const hours = document.getElementById('ban-hours').value;
+                    const reason = document.getElementById('ban-reason').value;
+                    const evidenceUrl = document.getElementById('ban-evidence').value;
+                    if (!confirm('Ban ' + agid + '?')) return false;
+                    if (await postRcon('/admin/rcon/ban', { agid, hours, reason, evidenceUrl })) {
+                        alert('Ban sent.');
+                    }
+                    return false;
+                }
+            </script>
+        <% } %>
+    </div>
+    <% } %>
+</div>
+
+<%- include('../partials/footer') %>
+

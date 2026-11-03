@@ -1,0 +1,4 @@
+{
+    "description": "Example species. Add or remove a file here to change which species can have Echoes assigned. The file name must match the species name the game reports.",
+    "enabled": true
+}

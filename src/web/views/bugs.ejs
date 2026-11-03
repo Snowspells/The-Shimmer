@@ -1,0 +1,132 @@
+<%- include('partials/header', { title: 'Bug Tracker', user }) %>
+
+<div class="suggestions-page bug-tracker">
+    <header class="suggestions-header">
+        <div>
+            <h1>Bug Tracker</h1>
+            <p>Report bugs you find in our systems and follow their progress. Only the Developer can change a report's status.</p>
+        </div>
+    </header>
+
+    <% if (notice) { %>
+        <p class="suggestion-notice" role="status"><%= notice %></p>
+    <% } %>
+
+    <section class="suggestion-submit admin-section">
+        <h2>Report a bug</h2>
+        <form method="post" action="/bugs" class="suggestion-form">
+            <label for="bug-title">Title</label>
+            <input id="bug-title" name="title" type="text" maxlength="120" required>
+            <label for="bug-severity">Severity</label>
+            <select id="bug-severity" name="severity" required>
+                <% severities.forEach(function(level) { %>
+                    <option value="<%= level %>" <%= level === 'Medium' ? 'selected' : '' %>><%= level %></option>
+                <% }); %>
+            </select>
+            <label for="bug-description">What happened? Include steps to reproduce if you can.</label>
+            <textarea id="bug-description" name="description" rows="5" maxlength="3000" required></textarea>
+            <button type="submit" class="btn btn-primary">Submit Bug Report</button>
+        </form>
+    </section>
+
+    <div class="suggestion-board" id="bug-board">
+        <% statuses.forEach(function(status) { %>
+            <% const columnBugs = bugs.filter(bug => bug.status === status); %>
+            <section class="suggestion-column">
+                <details class="suggestion-column-collapse" <%= status === 'Closed' ? '' : 'open' %>>
+                    <summary class="suggestion-column-header">
+                        <h2><%= status %></h2>
+                        <span><%= columnBugs.length %></span>
+                    </summary>
+                    <div class="suggestion-column-content">
+                        <% if (columnBugs.length === 0) { %>
+                            <p class="suggestion-empty">No bugs here.</p>
+                        <% } %>
+                        <% columnBugs.forEach(function(bug) { %>
+                            <article class="suggestion-card" id="bug-<%= bug.id %>">
+                                <div class="suggestion-card-meta">
+                                    <span>Bug #<%= bug.id %> · <strong><%= bug.severity %></strong></span>
+                                    <%- timeTag(bug.created_at, 'date') %>
+                                </div>
+                                <h3><%= bug.title %></h3>
+                                <p class="suggestion-description"><%= bug.description %></p>
+                                <p class="suggestion-author">Reported by <%= bug.creator_name %></p>
+
+                                <details class="suggestion-comments" <%= bug.comments.length ? '' : 'open' %>>
+                                    <summary>Comments (<%= bug.comments.length %>)</summary>
+                                    <% if (bug.comments.length) { %>
+                                        <ol class="suggestion-comment-list">
+                                            <% bug.comments.forEach(function(comment) { %>
+                                                <li>
+                                                    <div class="suggestion-comment-meta">
+                                                        <strong><%= comment.author_name %></strong>
+                                                        <%- timeTag(comment.created_at) %>
+                                                    </div>
+                                                    <p><%= comment.content %></p>
+                                                </li>
+                                            <% }); %>
+                                        </ol>
+                                    <% } else { %>
+                                        <p class="suggestion-empty">No comments yet.</p>
+                                    <% } %>
+                                    <form method="post" action="/bugs/<%= bug.id %>/comments" class="suggestion-form">
+                                        <label for="bug-comment-<%= bug.id %>">Add a comment</label>
+                                        <textarea id="bug-comment-<%= bug.id %>" name="content" rows="3" maxlength="2000" required></textarea>
+                                        <button type="submit" class="btn btn-sm btn-primary">Post Comment</button>
+                                    </form>
+                                </details>
+
+                                <% if (isDeveloper) { %>
+                                    <details class="suggestion-edit">
+                                        <summary>Edit bug</summary>
+                                        <form method="post" action="/bugs/<%= bug.id %>" class="suggestion-form">
+                                            <label for="bug-edit-title-<%= bug.id %>">Title</label>
+                                            <input id="bug-edit-title-<%= bug.id %>" name="title" type="text" maxlength="120" value="<%= bug.title %>" required>
+                                            <label for="bug-edit-description-<%= bug.id %>">Details</label>
+                                            <textarea id="bug-edit-description-<%= bug.id %>" name="description" rows="4" maxlength="3000" required><%= bug.description %></textarea>
+                                            <label for="bug-edit-severity-<%= bug.id %>">Severity</label>
+                                            <select id="bug-edit-severity-<%= bug.id %>" name="severity" required>
+                                                <% severities.forEach(function(level) { %>
+                                                    <option value="<%= level %>" <%= bug.severity === level ? 'selected' : '' %>><%= level %></option>
+                                                <% }); %>
+                                            </select>
+                                            <label for="bug-edit-status-<%= bug.id %>">Status</label>
+                                            <select id="bug-edit-status-<%= bug.id %>" name="status" required>
+                                                <% statuses.forEach(function(option) { %>
+                                                    <option value="<%= option %>" <%= bug.status === option ? 'selected' : '' %>><%= option %></option>
+                                                <% }); %>
+                                            </select>
+                                            <button type="submit" class="btn btn-sm btn-primary">Save Changes</button>
+                                        </form>
+                                        <form method="post" action="/bugs/<%= bug.id %>/delete" class="suggestion-delete-form"
+                                              onsubmit="var r = prompt('Reason for deleting this bug? It will be logged.'); if (!r || !r.trim()) return false; this.elements.reason.value = r.trim().slice(0, 500); return true;">
+                                            <input type="hidden" name="reason">
+                                            <button type="submit" class="btn btn-sm btn-danger">Delete Bug</button>
+                                        </form>
+                                    </details>
+                                <% } %>
+
+                                <% if (bug.activity.length > 0) { %>
+                                    <details class="suggestion-history">
+                                        <summary>History</summary>
+                                        <ol>
+                                            <% bug.activity.forEach(function(entry) { %>
+                                                <li>
+                                                    <strong><%= entry.action === 'reported' ? 'Reported' : 'Updated' %></strong>
+                                                    <span>by <%= entry.actor_name %> · <%- timeTag(entry.created_at) %></span>
+                                                    <% if (entry.details) { %><p><%= entry.details %></p><% } %>
+                                                </li>
+                                            <% }); %>
+                                        </ol>
+                                    </details>
+                                <% } %>
+                            </article>
+                        <% }); %>
+                    </div>
+                </details>
+            </section>
+        <% }); %>
+    </div>
+</div>
+
+<%- include('partials/footer') %>

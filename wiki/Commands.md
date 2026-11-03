@@ -91,7 +91,7 @@ See [Staff System](Staff-System.md) for full details on how role-based access wo
 |---------|-------------|--------|
 | `/ticket create [subject]` | Opens a private DM ticket | Everyone |
 | `/ticketsetup category <channel>` | Legacy channel-ticket setting | Owner or Developer |
-| `/ticketsetup log-channel <channel>` | Sets the ticket creation log channel | Owner or Developer |
+| `/ticketsetup log-channel <channel>` | Sets the per-server ticket event log channel | Owner or Developer |
 | `/ticketsetup support-role <role>` | Legacy channel-ticket setting | Owner or Developer |
 | `/ticketsetup welcome-message <message>` | Sets the opening DM message | Owner or Developer |
 | `/ticketsetup panel [title] [description]` | Sends a ticket creation panel with button | Owner or Developer |

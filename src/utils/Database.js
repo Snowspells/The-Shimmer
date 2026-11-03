@@ -162,6 +162,149 @@ class DatabaseManager {
             );
             CREATE INDEX IF NOT EXISTS idx_suggestion_activity_card
                 ON suggestion_activity(suggestion_id, id DESC);
+            CREATE TABLE IF NOT EXISTS suggestion_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                suggestion_id INTEGER NOT NULL,
+                author_id TEXT NOT NULL,
+                author_name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (suggestion_id) REFERENCES suggestions(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_suggestion_comments_card
+                ON suggestion_comments(suggestion_id, id ASC);
+        `);
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS bug_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                creator_id TEXT NOT NULL,
+                creator_name TEXT NOT NULL,
+                severity TEXT NOT NULL DEFAULT 'Medium'
+                    CHECK (severity IN ('Low', 'Medium', 'High', 'Critical')),
+                status TEXT NOT NULL DEFAULT 'New Bug Report'
+                    CHECK (status IN ('New Bug Report', 'Investigating', 'Identified', 'Closed')),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_bug_reports_status_updated
+                ON bug_reports(status, updated_at DESC);
+            CREATE TABLE IF NOT EXISTS bug_activity (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bug_id INTEGER NOT NULL,
+                actor_id TEXT NOT NULL,
+                actor_name TEXT NOT NULL,
+                action TEXT NOT NULL,
+                details TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_bug_activity_bug ON bug_activity(bug_id, id DESC);
+            CREATE TABLE IF NOT EXISTS bug_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bug_id INTEGER NOT NULL,
+                author_id TEXT NOT NULL,
+                author_name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_bug_comments_bug ON bug_comments(bug_id, id ASC);
+        `);
+        const bugTable = this.db.prepare(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'bug_reports'"
+        ).get();
+        if (bugTable && bugTable.sql.includes("'Confirmed'")) {
+            // Earlier status names: map them onto the current set while rebuilding the CHECK constraint.
+            this.db.transaction(() => {
+                this.db.exec(`
+                    ALTER TABLE bug_reports RENAME TO bug_reports_old;
+                    CREATE TABLE bug_reports (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        creator_id TEXT NOT NULL,
+                        creator_name TEXT NOT NULL,
+                        severity TEXT NOT NULL DEFAULT 'Medium'
+                            CHECK (severity IN ('Low', 'Medium', 'High', 'Critical')),
+                        status TEXT NOT NULL DEFAULT 'New Bug Report'
+                            CHECK (status IN ('New Bug Report', 'Investigating', 'Identified', 'Closed')),
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    );
+                    INSERT INTO bug_reports
+                        (id, title, description, creator_id, creator_name, severity, status, created_at, updated_at)
+                    SELECT id, title, description, creator_id, creator_name, severity,
+                        CASE status
+                            WHEN 'Open' THEN 'New Bug Report'
+                            WHEN 'Confirmed' THEN 'Identified'
+                            WHEN 'In Progress' THEN 'Investigating'
+                            WHEN 'Fixed' THEN 'Closed'
+                            ELSE status
+                        END, created_at, updated_at
+                    FROM bug_reports_old;
+                    DROP TABLE bug_reports_old;
+                    CREATE INDEX IF NOT EXISTS idx_bug_reports_status_updated
+                        ON bug_reports(status, updated_at DESC);
+                `);
+            })();
+        }
+        // Repair history text saved while the arrow was being stored as "?".
+        this.db.exec(`
+            UPDATE bug_activity
+            SET details = REPLACE(details, ' ? ', ' \u2192 ')
+            WHERE action = 'updated' AND details LIKE '%: % ? %'
+        `);
+        const notificationEventsSql = tableName => `
+            CREATE TABLE IF NOT EXISTS ${tableName} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL CHECK (category IN (
+                    'ticket_message', 'marks_changed', 'inventory_changed',
+                    'suggestion_comment', 'suggestion_update', 'bug_update', 'bug_comment'
+                )),
+                scope TEXT NOT NULL CHECK (scope IN ('private', 'tickets', 'suggestions', 'user_changes', 'bugs')),
+                recipient_id TEXT,
+                target_id TEXT NOT NULL,
+                actor_id TEXT,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        `;
+        this.db.exec(notificationEventsSql('notification_events'));
+        const existingEventsTable = this.db.prepare(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'notification_events'"
+        ).get();
+        if (!existingEventsTable.sql.includes("'bugs'")) {
+            // SQLite cannot alter a CHECK constraint, so rebuild the table while keeping reads intact.
+            this.db.pragma('foreign_keys = OFF');
+            try {
+                this.db.transaction(() => {
+                    this.db.exec(notificationEventsSql('notification_events_new'));
+                    this.db.exec(`
+                        INSERT INTO notification_events_new
+                            (id, category, scope, recipient_id, target_id, actor_id, title, message, created_at)
+                        SELECT id, category, scope, recipient_id, target_id, actor_id, title, message, created_at
+                        FROM notification_events;
+                        DROP TABLE notification_events;
+                        ALTER TABLE notification_events_new RENAME TO notification_events;
+                    `);
+                })();
+            } finally {
+                this.db.pragma('foreign_keys = ON');
+            }
+        }
+        this.db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_notification_events_recipient
+                ON notification_events(recipient_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_notification_events_scope_target
+                ON notification_events(scope, target_id, created_at DESC);
+            CREATE TABLE IF NOT EXISTS notification_reads (
+                user_id TEXT NOT NULL,
+                event_id INTEGER NOT NULL,
+                read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, event_id),
+                FOREIGN KEY (event_id) REFERENCES notification_events(id) ON DELETE CASCADE
+            );
         `);
 
         this.db.exec(`
@@ -238,13 +381,15 @@ class DatabaseManager {
 
         // Seed default role colors if empty
         const colorCount = this.db.prepare('SELECT COUNT(*) as count FROM role_colors').get().count;
+        const staffHeadMigrationNeeded = colorCount > 0 && this.db.pragma('user_version', { simple: true }) < 1;
         if (colorCount === 0) {
             const defaultColors = [
                 [0, 'Member', '#8b949e', null],
-                [1, 'Support', '#3fb950', null],
-                [2, 'Moderator', '#5865f2', null],
-                [3, 'Administrator', '#da3633', null],
-                [4, 'Owner', '#f0883e', null]
+                [1, 'Staff in Training', '#3fb950', null],
+                [2, 'Staff', '#5865f2', null],
+                [3, 'Staff Head', '#da3633', null],
+                [4, 'Owner', '#f0883e', null],
+                [5, 'Developer', '#a371f7', null]
             ];
             const insertColor = this.db.prepare(
                 'INSERT INTO role_colors (level, label, color, discord_role_id) VALUES (?, ?, ?, ?)'
@@ -294,6 +439,92 @@ class DatabaseManager {
                 code TEXT PRIMARY KEY,
                 token TEXT NOT NULL,
                 created_at TEXT NOT NULL
+            )
+        `);
+
+        // Staff Head was inserted below Owner, so Owner and Developer each moved up one level.
+        if (this.db.pragma('user_version', { simple: true }) < 1) {
+            this.db.transaction(() => {
+                if (staffHeadMigrationNeeded) {
+                    this.db.exec('UPDATE role_colors SET level = level + 10 WHERE level >= 3');
+                    this.db.exec('UPDATE role_colors SET level = level - 9 WHERE level >= 13');
+                    this.db.exec('UPDATE staff_roles SET level = level + 1 WHERE level >= 3');
+                    this.db.exec('UPDATE client_tokens SET staff_level = staff_level + 1 WHERE staff_level >= 3');
+                    this.db.prepare(
+                        'INSERT OR IGNORE INTO role_colors (level, label, color, discord_role_id) VALUES (3, ?, ?, NULL)'
+                    ).run('Staff Head', '#da3633');
+                }
+                this.db.pragma('user_version = 1');
+            })();
+        }
+
+        this.initializeEchoTables();
+        this.initializeInfractionTables();
+    }
+
+    initializeInfractionTables() {
+        // Infractions are keyed by AGID so unlinked players can be reported too.
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reporter_agid TEXT,
+                reporter_name TEXT,
+                target_agid TEXT NOT NULL,
+                target_name TEXT,
+                option_name TEXT NOT NULL,
+                details TEXT,
+                server TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                judgement TEXT,
+                judged_by TEXT,
+                judged_by_name TEXT,
+                judged_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS infractions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agid TEXT NOT NULL,
+                report_id INTEGER,
+                type TEXT NOT NULL,
+                points INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                issued_by TEXT,
+                removed_by TEXT,
+                removed_by_name TEXT,
+                removed_at DATETIME,
+                removal_reason TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_infractions_agid ON infractions (agid, status);
+            CREATE TABLE IF NOT EXISTS infraction_appeals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                infraction_id INTEGER NOT NULL,
+                did TEXT NOT NULL,
+                message TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                decided_by TEXT,
+                decided_by_name TEXT,
+                decided_at DATETIME,
+                decision_note TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS infraction_bans (
+                agid TEXT PRIMARY KEY,
+                banned INTEGER NOT NULL DEFAULT 0
+            );
+        `);
+    }
+
+    initializeEchoTables() {
+        // Assignments of Echo inventory items to a species. One item per tier per species.
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS echo_assignments (
+                did TEXT NOT NULL,
+                species TEXT NOT NULL COLLATE NOCASE,
+                tier TEXT NOT NULL,
+                item_id TEXT NOT NULL UNIQUE,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (did, species, tier)
             )
         `);
     }
@@ -409,28 +640,211 @@ class DatabaseManager {
         }
     }
 
-    updateUser(discordId, data) {
+    updateUser(discordId, data, { actorId = null, actorName = null, targetName = null, reason = null } = {}) {
+        const changes = [];
         try {
-            const fields = [];
-            const values = [];
-            
-            for (const [key, value] of Object.entries(data)) {
-                if (key !== 'DID') {
-                    fields.push(`${key} = ?`);
-                    values.push(key === 'inventory' ? JSON.stringify(value) : value);
+            const update = this.db.transaction(() => {
+                const current = this.getUserByDiscordId(discordId);
+                if (!current) return;
+                const fields = [];
+                const values = [];
+                const inventoryJson = data.inventory === undefined
+                    ? null
+                    : JSON.stringify(data.inventory);
+
+                for (const [key, value] of Object.entries(data)) {
+                    if (key !== 'DID') {
+                        fields.push(`${key} = ?`);
+                        values.push(key === 'inventory' ? inventoryJson : value);
+                    }
                 }
-            }
 
-            if (fields.length === 0) return;
+                if (fields.length === 0) return;
+                values.push(discordId);
+                const query = `UPDATE users SET ${fields.join(', ')} WHERE DID = ?`;
+                this.db.prepare(query).run(...values);
 
-            values.push(discordId);
-            const query = `UPDATE users SET ${fields.join(', ')} WHERE DID = ?`;
-            this.db.prepare(query).run(...values);
+                const editedByOther = Boolean(actorId) && actorId !== discordId;
+                const editor = actorName || 'Staff';
+                const why = reason ? ` Reason: ${reason}` : '';
+                const subject = editedByOther ? `${targetName || discordId}'s` : 'their own';
+                const countItems = json => {
+                    try {
+                        const parsed = JSON.parse(json || '[]');
+                        return Array.isArray(parsed) ? parsed.length : 0;
+                    } catch {
+                        return 0;
+                    }
+                };
+
+                if (data.marks !== undefined && current.marks !== data.marks) {
+                    changes.push({ field: 'marks', from: current.marks, to: data.marks });
+                    this.createNotificationEvent({
+                        category: 'marks_changed',
+                        scope: 'private',
+                        recipientId: discordId,
+                        targetId: discordId,
+                        actorId,
+                        title: 'Marks updated',
+                        message: `Your Marks changed from ${current.marks} to ${data.marks}${editedByOther ? ` by ${editor}` : ''}.${why}`
+                    });
+                    {
+                        this.createNotificationEvent({
+                            category: 'marks_changed',
+                            scope: 'user_changes',
+                            targetId: discordId,
+                            actorId,
+                            title: 'Marks updated',
+                            message: `${editor} changed ${subject} Marks from ${current.marks} to ${data.marks}.${why}`
+                        });
+                    }
+                }
+
+                if (inventoryJson !== null && current.inventory !== inventoryJson) {
+                    changes.push({ field: 'inventory', from: current.inventory, to: inventoryJson });
+                    this.createNotificationEvent({
+                        category: 'inventory_changed',
+                        scope: 'private',
+                        recipientId: discordId,
+                        targetId: discordId,
+                        actorId,
+                        title: 'Inventory updated',
+                        message: editedByOther
+                            ? `${editor} changed your inventory.${why}`
+                            : 'Your inventory has changed.'
+                    });
+                    {
+                        this.createNotificationEvent({
+                            category: 'inventory_changed',
+                            scope: 'user_changes',
+                            targetId: discordId,
+                            actorId,
+                            title: 'Inventory updated',
+                            message: `${editor} changed ${subject} inventory (${countItems(current.inventory)} → ${countItems(inventoryJson)} items).${why}`
+                        });
+                    }
+                }
+            });
+            update();
             this.checkpointWAL();
         } catch (err) {
             const { error } = require('./Console');
             error('Error updating user:', err);
         }
+        return changes;
+    }
+
+    createNotificationEvent({
+        category, scope, recipientId = null, targetId, actorId = null, title, message
+    }) {
+        const result = this.db.prepare(`
+            INSERT INTO notification_events
+                (category, scope, recipient_id, target_id, actor_id, title, message)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(category, scope, recipientId, String(targetId), actorId, title, message);
+        return Number(result.lastInsertRowid);
+    }
+
+    getUnreadNotifications(
+        userId,
+        { canManageTickets = false, isLinkedMember = false, canViewUserChanges = false } = {},
+        limit = 13,
+        beforeId = null
+    ) {
+        return this.db.prepare(`
+            SELECT n.id, n.category, n.scope, n.target_id, n.actor_id, n.title, n.message, n.created_at
+            FROM notification_events n
+            LEFT JOIN notification_reads r ON r.event_id = n.id AND r.user_id = ?
+            WHERE r.event_id IS NULL
+                AND n.actor_id IS NOT ?
+                AND (
+                    n.recipient_id = ?
+                    OR (n.scope = 'tickets' AND ? = 1)
+                    OR (n.scope = 'suggestions' AND ? = 1)
+                    OR (n.scope = 'user_changes' AND ? = 1 AND n.target_id <> ?)
+                )
+                AND (? IS NULL OR n.id < ?)
+            ORDER BY n.id DESC
+            LIMIT ?
+        `).all(
+            userId,
+            userId,
+            userId,
+            canManageTickets ? 1 : 0,
+            isLinkedMember ? 1 : 0,
+            canViewUserChanges ? 1 : 0,
+            userId,
+            beforeId,
+            beforeId,
+            limit
+        );
+    }
+
+    getUnreadNotificationCounts(
+        userId,
+        { canManageTickets = false, isLinkedMember = false, canViewUserChanges = false } = {}
+    ) {
+        return this.db.prepare(`
+            SELECT n.category, COUNT(*) AS count
+            FROM notification_events n
+            LEFT JOIN notification_reads r ON r.event_id = n.id AND r.user_id = ?
+            WHERE r.event_id IS NULL
+                AND n.actor_id IS NOT ?
+                AND (
+                    n.recipient_id = ?
+                    OR (n.scope = 'tickets' AND ? = 1)
+                    OR (n.scope = 'suggestions' AND ? = 1)
+                    OR (n.scope = 'user_changes' AND ? = 1 AND n.target_id <> ?)
+                )
+            GROUP BY n.category
+        `).all(
+            userId,
+            userId,
+            userId,
+            canManageTickets ? 1 : 0,
+            isLinkedMember ? 1 : 0,
+            canViewUserChanges ? 1 : 0,
+            userId
+        );
+    }
+
+    markNotificationsViewed(userId, {
+        category = null, targetId = null, scope = 'private', includeRecipient = true
+    } = {}) {
+        const conditions = [
+            'r.event_id IS NULL',
+            'n.actor_id IS NOT ?',
+            '((n.recipient_id = ? AND ? = 1) OR (n.scope = ? AND ? = 1))'
+        ];
+        const values = [
+            userId, userId, userId, includeRecipient ? 1 : 0, scope, 1
+        ];
+
+        if (scope === 'user_changes') {
+            conditions.push('n.target_id <> ?');
+            values.push(userId);
+        }
+
+        if (category) {
+            conditions.push('n.category = ?');
+            values.push(category);
+        }
+        if (targetId !== null) {
+            conditions.push('n.target_id = ?');
+            values.push(String(targetId));
+        }
+
+        const sql = `
+            INSERT OR IGNORE INTO notification_reads (user_id, event_id)
+            SELECT ?, n.id
+            FROM notification_events n
+            LEFT JOIN notification_reads r ON r.event_id = n.id AND r.user_id = ?
+            WHERE ${conditions.join(' AND ')}
+        `;
+        values.unshift(userId);
+        const result = this.db.prepare(sql).run(...values);
+        if (result.changes > 0) this.checkpointWAL();
+        return result.changes;
     }
 
     getAllUsers() {
@@ -445,6 +859,11 @@ class DatabaseManager {
             error('Error getting all users:', err);
             return [];
         }
+    }
+
+    addMarks(discordId, amount) {
+        const result = this.db.prepare('UPDATE users SET marks = marks + ? WHERE DID = ?').run(amount, discordId);
+        return result.changes > 0;
     }
 
     deleteUser(discordId) {
@@ -474,16 +893,18 @@ class DatabaseManager {
         SUPPORT: 1,
         STAFF: 2,
         MODERATOR: 2,
-        OWNER: 3,
-        DEVELOPER: 4,
-        ADMINISTRATOR: 4
+        STAFF_HEAD: 3,
+        OWNER: 4,
+        DEVELOPER: 5,
+        ADMINISTRATOR: 5
     };
     static STAFF_LABELS = {
         0: 'Member',
         1: 'Staff in Training',
         2: 'Staff',
-        3: 'Owner',
-        4: 'Developer'
+        3: 'Staff Head',
+        4: 'Owner',
+        5: 'Developer'
     };
 
     setStaffRole(roleId, guildId, level) {
@@ -595,6 +1016,118 @@ class DatabaseManager {
         }
     }
 
+    // Bug notifications are private to the Developer; nothing is created when none is configured.
+    notifyBugDeveloper({ category, targetId, actorId, title, message }) {
+        const developerId = process.env.DEVELOPER_USER_ID;
+        if (!developerId || developerId === actorId) return;
+        this.createNotificationEvent({
+            category, scope: 'private', recipientId: developerId, targetId, actorId, title, message
+        });
+    }
+
+    createBug({ title, description, severity, creatorId, creatorName }) {
+        const create = this.db.transaction(() => {
+            const result = this.db.prepare(`
+                INSERT INTO bug_reports (title, description, severity, creator_id, creator_name)
+                VALUES (?, ?, ?, ?, ?)
+            `).run(title, description, severity, creatorId, creatorName);
+            const bugId = Number(result.lastInsertRowid);
+            this.db.prepare(`
+                INSERT INTO bug_activity (bug_id, actor_id, actor_name, action, details)
+                VALUES (?, ?, ?, 'reported', ?)
+            `).run(bugId, creatorId, creatorName, `Severity: ${severity}`);
+            this.notifyBugDeveloper({
+                category: 'bug_update',
+                targetId: bugId,
+                actorId: creatorId,
+                title: 'New bug reported',
+                message: `Bug #${bugId}: ${title}`
+            });
+            return this.getBug(bugId);
+        });
+        const bug = create();
+        this.checkpointWAL();
+        return bug;
+    }
+
+    getBugs() {
+        return this.db.prepare('SELECT * FROM bug_reports ORDER BY updated_at DESC, id DESC').all();
+    }
+
+    getBug(bugId) {
+        return this.db.prepare('SELECT * FROM bug_reports WHERE id = ?').get(bugId) || null;
+    }
+
+    getBugActivity(bugId) {
+        return this.db.prepare('SELECT * FROM bug_activity WHERE bug_id = ? ORDER BY id DESC').all(bugId);
+    }
+
+    getBugComments(bugId) {
+        return this.db.prepare('SELECT * FROM bug_comments WHERE bug_id = ? ORDER BY id ASC').all(bugId);
+    }
+
+    addBugComment(bugId, { authorId, authorName, content }) {
+        const add = this.db.transaction(() => {
+            const bug = this.getBug(bugId);
+            if (!bug) return null;
+            const result = this.db.prepare(`
+                INSERT INTO bug_comments (bug_id, author_id, author_name, content)
+                VALUES (?, ?, ?, ?)
+            `).run(bugId, authorId, authorName, content);
+            this.notifyBugDeveloper({
+                category: 'bug_comment',
+                targetId: bugId,
+                actorId: authorId,
+                title: `New comment on bug #${bugId}`,
+                message: `${authorName} commented on: ${bug.title}`
+            });
+            return this.db.prepare('SELECT * FROM bug_comments WHERE id = ?').get(Number(result.lastInsertRowid));
+        });
+        const comment = add();
+        this.checkpointWAL();
+        return comment;
+    }
+
+    updateBug(bugId, { title, description, severity, status, actorId, actorName }) {
+        const update = this.db.transaction(() => {
+            const current = this.getBug(bugId);
+            if (!current) return null;
+            const changes = [];
+            if (current.status !== status) changes.push(`status: ${current.status} → ${status}`);
+            if (current.severity !== severity) changes.push(`severity: ${current.severity} → ${severity}`);
+            if (current.title !== title) changes.push('title');
+            if (current.description !== description) changes.push('details');
+            if (changes.length === 0) return { bug: current, changes };
+            this.db.prepare(`
+                UPDATE bug_reports
+                SET title = ?, description = ?, severity = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `).run(title, description, severity, status, bugId);
+            this.db.prepare(`
+                INSERT INTO bug_activity (bug_id, actor_id, actor_name, action, details)
+                VALUES (?, ?, ?, 'updated', ?)
+            `).run(bugId, actorId, actorName, changes.join('; '));
+            return { bug: this.getBug(bugId), changes };
+        });
+        const result = update();
+        this.checkpointWAL();
+        return result;
+    }
+
+    deleteBug(bugId) {
+        const remove = this.db.transaction(() => {
+            const bug = this.getBug(bugId);
+            if (!bug) return null;
+            this.db.prepare('DELETE FROM bug_comments WHERE bug_id = ?').run(bugId);
+            this.db.prepare('DELETE FROM bug_activity WHERE bug_id = ?').run(bugId);
+            this.db.prepare('DELETE FROM bug_reports WHERE id = ?').run(bugId);
+            return bug;
+        });
+        const bug = remove();
+        this.checkpointWAL();
+        return bug;
+    }
+
     createSuggestion({ title, description, creatorId, creatorName }) {
         const create = this.db.transaction(() => {
             const result = this.db.prepare(`
@@ -607,6 +1140,14 @@ class DatabaseManager {
                     (suggestion_id, actor_id, actor_name, action, to_status)
                 VALUES (?, ?, ?, 'submitted', 'Suggested')
             `).run(suggestionId, creatorId, creatorName);
+            this.createNotificationEvent({
+                category: 'suggestion_update',
+                scope: 'suggestions',
+                targetId: suggestionId,
+                actorId: creatorId,
+                title: 'New suggestion submitted',
+                message: `Suggestion #${suggestionId}: ${title}`
+            });
             return this.getSuggestion(suggestionId);
         });
         const suggestion = create();
@@ -626,6 +1167,14 @@ class DatabaseManager {
                     (suggestion_id, actor_id, actor_name, action, to_status)
                 VALUES (?, ?, ?, 'created_by_developer', ?)
             `).run(suggestionId, creatorId, creatorName, status);
+            this.createNotificationEvent({
+                category: 'suggestion_update',
+                scope: 'suggestions',
+                targetId: suggestionId,
+                actorId: creatorId,
+                title: 'New suggestion card',
+                message: `Suggestion #${suggestionId}: ${title}`
+            });
             return this.getSuggestion(suggestionId);
         });
         const suggestion = create();
@@ -646,6 +1195,39 @@ class DatabaseManager {
     getSuggestionActivity(suggestionId) {
         return this.db.prepare(
             'SELECT * FROM suggestion_activity WHERE suggestion_id = ? ORDER BY id DESC'
+        ).all(suggestionId);
+    }
+
+    addSuggestionComment(suggestionId, { authorId, authorName, content }) {
+        const add = this.db.transaction(() => {
+            const result = this.db.prepare(`
+                INSERT INTO suggestion_comments (suggestion_id, author_id, author_name, content)
+                SELECT ?, ?, ?, ?
+                WHERE EXISTS (SELECT 1 FROM suggestions WHERE id = ?)
+            `).run(suggestionId, authorId, authorName, content, suggestionId);
+            if (result.changes !== 1) return null;
+            const suggestion = this.getSuggestion(suggestionId);
+            this.createNotificationEvent({
+                category: 'suggestion_comment',
+                scope: 'suggestions',
+                targetId: suggestionId,
+                actorId: authorId,
+                title: `New comment on suggestion #${suggestionId}`,
+                message: `${authorName} commented on: ${suggestion.title}`
+            });
+            return this.db.prepare(
+                'SELECT * FROM suggestion_comments WHERE id = ?'
+            ).get(Number(result.lastInsertRowid));
+        });
+        const comment = add();
+        if (!comment) return null;
+        this.checkpointWAL();
+        return comment;
+    }
+
+    getSuggestionComments(suggestionId) {
+        return this.db.prepare(
+            'SELECT * FROM suggestion_comments WHERE suggestion_id = ? ORDER BY id ASC'
         ).all(suggestionId);
     }
 
@@ -724,6 +1306,20 @@ class DatabaseManager {
                     VALUES (?, ?, ?, 'status_changed', ?, ?)
                 `).run(suggestionId, actorId, actorName, current.status, status);
             }
+            const changes = [];
+            if (current.title !== title) changes.push('title');
+            if (current.description !== description) changes.push('details');
+            if (current.status !== status) changes.push(`status: ${current.status} to ${status}`);
+            if (changes.length) {
+                this.createNotificationEvent({
+                    category: 'suggestion_update',
+                    scope: 'suggestions',
+                    targetId: suggestionId,
+                    actorId,
+                    title: `Suggestion #${suggestionId} updated`,
+                    message: `${current.title}: ${changes.join(', ')} changed.`
+                });
+            }
             return this.getSuggestion(suggestionId);
         });
         const suggestion = update();
@@ -758,6 +1354,14 @@ class DatabaseManager {
                     (suggestion_id, actor_id, actor_name, action, from_status, to_status, details)
                 VALUES (?, ?, ?, 'declined', ?, 'Declined', ?)
             `).run(suggestionId, actorId, actorName, current.status, reason);
+            this.createNotificationEvent({
+                category: 'suggestion_update',
+                scope: 'suggestions',
+                targetId: suggestionId,
+                actorId,
+                title: `Suggestion #${suggestionId} declined`,
+                message: `${current.title}: status changed to Declined.`
+            });
             return this.getSuggestion(suggestionId);
         });
         const suggestion = decline();
@@ -765,8 +1369,19 @@ class DatabaseManager {
         return suggestion;
     }
 
-    deleteSuggestion(suggestionId) {
+    deleteSuggestion(suggestionId, { actorId } = {}) {
         const remove = this.db.transaction(() => {
+            const suggestion = this.getSuggestion(suggestionId);
+            if (!suggestion) return false;
+            this.createNotificationEvent({
+                category: 'suggestion_update',
+                scope: 'suggestions',
+                targetId: suggestionId,
+                actorId,
+                title: `Suggestion #${suggestionId} deleted`,
+                message: `${suggestion.title} was removed from the board.`
+            });
+            this.db.prepare('DELETE FROM suggestion_comments WHERE suggestion_id = ?').run(suggestionId);
             this.db.prepare('DELETE FROM suggestion_activity WHERE suggestion_id = ?').run(suggestionId);
             return this.db.prepare('DELETE FROM suggestions WHERE id = ?').run(suggestionId).changes > 0;
         });
@@ -944,11 +1559,28 @@ class DatabaseManager {
 
     addTicketMessage(ticketId, authorId, authorName, authorType, content, discordMessageId = null) {
         try {
-            const result = this.db.prepare(`
-                INSERT INTO ticket_messages
-                    (ticket_id, author_id, author_name, author_type, content, discord_message_id)
-                VALUES (?, ?, ?, ?, ?, ?)
-            `).run(ticketId, authorId, authorName, authorType, content, discordMessageId);
+            const result = this.db.transaction(() => {
+                const ticket = this.getTicket(ticketId);
+                if (!ticket) return null;
+                const inserted = this.db.prepare(`
+                    INSERT INTO ticket_messages
+                        (ticket_id, author_id, author_name, author_type, content, discord_message_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `).run(ticketId, authorId, authorName, authorType, content, discordMessageId);
+                if (authorType !== 'system') {
+                    this.createNotificationEvent({
+                        category: 'ticket_message',
+                        scope: 'tickets',
+                        recipientId: ticket.creator_id === authorId ? null : ticket.creator_id,
+                        targetId: ticketId,
+                        actorId: authorId,
+                        title: `New message in ticket #${ticketId}`,
+                        message: `${authorName}: ${content.slice(0, 180)}`
+                    });
+                }
+                return inserted;
+            })();
+            if (!result) return null;
             this.checkpointWAL();
             return result.lastInsertRowid;
         } catch (err) {

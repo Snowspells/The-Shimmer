@@ -1,0 +1,17 @@
+{
+    "description": "A powerful reserve of stamina and health, at the cost of damage.",
+    "attributes": {
+        "Health": 1.1,
+        "Stamina": 1.35,
+        "Oxygen": null,
+        "Hunger": null,
+        "Thirst": null,
+        "Growth": null,
+        "Damage": 0.95,
+        "Weight": null,
+        "WalkSpeed": null,
+        "TrotSpeed": null,
+        "SprintSpeed": null,
+        "SwimSpeed": null
+    }
+}

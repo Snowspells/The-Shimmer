@@ -1,0 +1,87 @@
+<%- include('../partials/header', { title: 'Linked Users - Staff Panel', user }) %>
+
+<div class="admin">
+    <div class="admin-header">
+        <h1>Linked Users</h1>
+        <span class="staff-badge staff-level-<%= user.staffLevel %>"><%= user.staffLabel %></span>
+    </div>
+    <%- include('../partials/admin-nav', { active: 'users', permissions }) %>
+
+    <% if (permissions.canManageServer) { %>
+    <div class="admin-section">
+        <h2>Linked Users</h2>
+        <% if (users.length > 0) { %>
+            <div class="table-wrapper">
+                <table class="data-table users-table">
+                    <colgroup>
+                        <col style="width: 20%">
+                        <col style="width: 14%">
+                        <col style="width: 8%">
+                        <col style="width: 26%">
+                        <col style="width: 9%">
+                        <col style="width: 23%">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>AGID</th>
+                            <th>Marks</th>
+                            <th>Inventory (JSON)</th>
+                            <th>Linked Since</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% users.forEach(function(u) { %>
+                            <tr>
+                                <td data-label="User" class="user-cell">
+                                    <strong><%= u.globalUsername !== 'Not set' ? u.globalUsername : u.discordUsername %></strong>
+                                    <span class="user-handle">@<%= u.discordUsername %></span>
+                                    <code><%= u.DID %></code>
+                                </td>
+                                <td data-label="AGID">
+                                        <% if (permissions.canManageEconomy) { %><input form="update-user-<%= u.DID %>" type="text" name="agid" value="<%= u.agid %>" class="input-sm"><% } else { %><code><%= u.agid %></code><% } %>
+                                </td>
+                                <td data-label="Marks">
+                                        <% if (permissions.canManageEconomy) { %><input form="update-user-<%= u.DID %>" type="number" name="marks" min="0" step="1" required value="<%= u.marks %>" class="input-sm input-number"><% } else { %><%= u.marks %><% } %>
+                                </td>
+                                <td data-label="Inventory (JSON)">
+                                        <% if (permissions.canManageEconomy) { %><textarea form="update-user-<%= u.DID %>" name="inventory" rows="3" class="input-sm" aria-label="Inventory JSON for <%= u.DID %>"><%= JSON.stringify(u.inventory) %></textarea><% } else { %><code><%= JSON.stringify(u.inventory) %></code><% } %>
+                                </td>
+                                <td data-label="Linked Since"><%- timeTag(u.created_at, 'date') %></td>
+                                <td class="actions-cell user-actions" data-label="Actions">
+                                    <% if (permissions.canManageEconomy) { %>
+                                    <form id="update-user-<%= u.DID %>" method="POST" action="/admin/users/<%= u.DID %>/update"></form>
+                                    <input form="update-user-<%= u.DID %>" type="text" name="reason" required maxlength="300" placeholder="Reason for change" aria-label="Reason for changing <%= u.DID %>" class="input-sm">
+                                    <button type="submit" form="update-user-<%= u.DID %>" class="btn btn-sm btn-primary">Save</button>
+                                    <form method="POST" action="/admin/users/<%= u.DID %>/delete" class="inline-form"
+                                          onsubmit="return requestDeleteReason(this)">
+                                        <input type="hidden" name="reason">
+                                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                    </form>
+                                    <% } else { %>Read-only<% } %>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+        <% } else { %>
+            <div class="empty-state">
+                <p>No linked users yet.</p>
+            </div>
+        <% } %>
+    </div>
+    <% } %>
+</div>
+
+<script>
+    function requestDeleteReason(form) {
+        const reason = prompt('Reason for deleting this user? This cannot be undone.');
+        if (!reason || !reason.trim()) return false;
+        form.elements.reason.value = reason.trim().slice(0, 300);
+        return true;
+    }
+</script>
+<%- include('../partials/footer') %>
+

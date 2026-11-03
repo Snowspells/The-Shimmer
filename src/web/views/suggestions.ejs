@@ -42,26 +42,54 @@
         </details>
     <% } %>
 
-    <div class="suggestion-board">
+    <div class="suggestion-board" id="suggestions-board">
         <% [...statuses, 'Declined'].forEach(function(status) { %>
             <section class="suggestion-column">
-                <header class="suggestion-column-header">
-                    <h2><%= status %></h2>
-                    <span><%= cards.filter(card => card.status === status).length %></span>
-                </header>
                 <% const columnCards = cards.filter(card => card.status === status); %>
+                <details class="suggestion-column-collapse" <%= status === 'Completed' || status === 'Declined' ? '' : 'open' %>>
+                    <summary class="suggestion-column-header">
+                        <h2><%= status %></h2>
+                        <span><%= columnCards.length %></span>
+                    </summary>
+                    <div class="suggestion-column-content">
                 <% if (columnCards.length === 0) { %>
                     <p class="suggestion-empty">No cards yet.</p>
                 <% } %>
                 <% columnCards.forEach(function(card) { %>
-                    <article class="suggestion-card">
+                    <article class="suggestion-card" id="suggestion-<%= card.id %>">
                         <div class="suggestion-card-meta">
                             <span>Suggestion #<%= card.id %></span>
-                            <time datetime="<%= new Date(card.created_at).toISOString() %>"><%= new Date(card.created_at).toLocaleDateString() %></time>
+                            <%- timeTag(card.created_at, 'date') %>
                         </div>
                         <h3><%= card.title %></h3>
                         <p class="suggestion-description"><%= card.description %></p>
                         <p class="suggestion-author">Submitted by <%= card.creator_name %></p>
+
+                        <details class="suggestion-comments" <%= card.comments.length ? '' : 'open' %>>
+                            <summary>Comments (<%= card.comments.length %>)</summary>
+                            <% if (card.comments.length) { %>
+                                <ol class="suggestion-comment-list">
+                                    <% card.comments.forEach(function(comment) { %>
+                                        <li>
+                                            <div class="suggestion-comment-meta">
+                                                <strong><%= comment.author_name %></strong>
+                                                <%- timeTag(comment.created_at) %>
+                                            </div>
+                                            <p><%= comment.content %></p>
+                                        </li>
+                                    <% }); %>
+                                </ol>
+                            <% } else { %>
+                                <p class="suggestion-empty">No comments yet.</p>
+                            <% } %>
+                            <% if (card.canComment) { %>
+                                <form method="post" action="/suggestions/cards/<%= card.id %>/comments" class="suggestion-form">
+                                    <label for="comment-<%= card.id %>">Add a comment</label>
+                                    <textarea id="comment-<%= card.id %>" name="content" rows="3" maxlength="2000" required></textarea>
+                                    <button type="submit" class="btn btn-sm btn-primary">Post Comment</button>
+                                </form>
+                            <% } %>
+                        </details>
 
                         <% if (card.status === 'Declined') { %>
                             <div class="suggestion-decline">
@@ -90,9 +118,19 @@
                                     </select>
                                     <button type="submit" class="btn btn-sm btn-primary">Save Changes</button>
                                 </form>
+                                <form method="post" action="/suggestions/cards/<%= card.id %>/delete" class="suggestion-delete-form">
+                                    <button type="submit" class="btn btn-sm btn-danger">Delete Card</button>
+                                </form>
                             </details>
-                            <form method="post" action="/suggestions/cards/<%= card.id %>/delete" class="suggestion-delete-form" onsubmit="return confirm('Permanently delete this card and its progress history?')">
-                                <button type="submit" class="btn btn-sm btn-danger">Delete Card</button>
+                        <% } else if (isOwner && card.status !== 'Declined' && card.status !== 'Completed') { %>
+                            <form method="post" action="/suggestions/cards/<%= card.id %>" class="suggestion-form">
+                                <label for="owner-status-<%= card.id %>">Progress status</label>
+                                <select id="owner-status-<%= card.id %>" name="status" required>
+                                    <% statuses.forEach(function(option) { %>
+                                        <option value="<%= option %>" <%= card.status === option ? 'selected' : '' %>><%= option %></option>
+                                    <% }); %>
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-primary">Update Status</button>
                             </form>
                         <% } %>
 
@@ -114,7 +152,7 @@
                                     <% card.activity.forEach(function(entry) { %>
                                         <li>
                                             <strong><%= entry.action === 'status_changed' ? `${entry.from_status} → ${entry.to_status}` : entry.action === 'declined' ? 'Declined' : entry.action === 'submitted' ? 'Submitted' : 'Created' %></strong>
-                                            <span>by <%= entry.actor_name %> · <%= new Date(entry.created_at).toLocaleString() %></span>
+                                            <span>by <%= entry.actor_name %> · <%- timeTag(entry.created_at) %></span>
                                             <% if (entry.details) { %><p><%= entry.details %></p><% } %>
                                         </li>
                                     <% }); %>
@@ -123,9 +161,12 @@
                         <% } %>
                     </article>
                 <% }); %>
+                    </div>
+                </details>
             </section>
         <% }); %>
     </div>
 </div>
 
+<script src="/js/suggestions.js" defer></script>
 <%- include('partials/footer') %>

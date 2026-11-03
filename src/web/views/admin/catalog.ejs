@@ -1,0 +1,33 @@
+<%- include('../partials/header', { title: 'Echo & Shop Catalog', user }) %>
+
+<div class="admin">
+    <div class="admin-header">
+        <h1>Echo &amp; Shop Catalog</h1>
+        <span class="staff-badge staff-level-<%= user.staffLevel %>"><%= user.staffLabel %></span>
+    </div>
+    <%- include('../partials/admin-nav', { active: 'catalog', permissions }) %>
+    <p>Read from the JSON files under <code>config/</code>. Add or remove a file to add or remove an entry; changes apply immediately.</p>
+
+    <% tiers.forEach(function(tier) { %>
+        <h2><%= tier.folder %> <small>(<%= Math.round(tier.breakChance * 100) %>% break chance)</small></h2>
+        <% if (tier.echoes.length === 0) { %><p>None configured.</p><% } %>
+        <ul>
+            <% tier.echoes.forEach(function(e) { %>
+                <li><strong><%= e.name %></strong> &mdash; <%= Object.entries(e.attributes).filter(([, v]) => v !== null && v !== '').map(([k, v]) => k + ' ' + v).join(', ') || 'no attributes set' %></li>
+            <% }); %>
+        </ul>
+    <% }); %>
+
+    <h2>Species</h2>
+    <p><%= species.map(s => s.name).join(', ') || 'None configured.' %></p>
+
+    <h2>Shop</h2>
+    <% if (shopItems.length === 0) { %><p>None configured.</p><% } %>
+    <ul>
+        <% shopItems.forEach(function(i) { %>
+            <li><strong><%= i.name %></strong> (<%= i.category %>) &mdash; <%= i.price %> Marks<%= i.echo ? ' -> ' + i.echo.name : '' %></li>
+        <% }); %>
+    </ul>
+</div>
+
+<%- include('../partials/footer') %>

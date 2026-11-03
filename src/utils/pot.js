@@ -123,6 +123,7 @@ function generateLinkCode(length = 6) {
 
 module.exports = {
     AGID_PATTERN,
+    extractLines,
     normalizeAgid,
     isValidAgid,
     parseWebhookMessage,

@@ -1,9 +1,9 @@
-const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 const { ChannelType } = require('discord.js');
 const { debug, error, info, warn } = require('../utils/Console');
 const { resolveDatabasePath } = require('../utils/DatabasePaths');
+const { getWebChatUserId } = require('../utils/WebChatMarker');
 
 const PROFILE_CONTEXT_CHAR_LIMIT = 12000;
 const PROFILE_HISTORY_CONTEXT_CHAR_LIMIT = 5000;
@@ -11,6 +11,8 @@ const HISTORY_CONTEXT_CHAR_LIMIT = 2000;
 const PROMPT_CHAR_LIMIT = 4500;
 const MAX_COMPLETION_TOKENS = 512;
 const DISCORD_MESSAGE_LIMIT = 2000;
+const getProfilesForumChannelId = () =>
+    process.env.PROFILES_CHANNEL_ID || process.env.FORUM_CHANNEL_ID;
 const PROFILE_SEARCH_STOP_WORDS = new Set([
     'a', 'about', 'after', 'all', 'also', 'am', 'an', 'and', 'are', 'as', 'at', 'be', 'been',
     'being', 'but', 'by', 'can', 'could', 'did', 'do', 'does', 'for', 'from', 'get', 'got',
@@ -256,9 +258,10 @@ class AiChatbotPlugin {
         this.profileSyncTimers = new Map();
         this.profileSyncQueues = new Map();
 
-        if (process.env.FORUM_CHANNEL_ID &&
-            process.env.FORUM_CHANNEL_ID === process.env.RULES_FORUM_CHANNEL_ID) {
-            error('FORUM_CHANNEL_ID and RULES_FORUM_CHANNEL_ID must point to different forums; chatbot plugin disabled.');
+        const profilesForumChannelId = getProfilesForumChannelId();
+        if (profilesForumChannelId &&
+            profilesForumChannelId === process.env.RULES_FORUM_CHANNEL_ID) {
+            error('PROFILES_CHANNEL_ID and RULES_FORUM_CHANNEL_ID must point to different forums; chatbot plugin disabled.');
             return;
         }
 
@@ -296,10 +299,6 @@ class AiChatbotPlugin {
             'memory.db',
             path.resolve(__dirname, '../../memory.db')
         );
-        if (!fs.existsSync(this.memoryDbPath)) {
-            error(`AI chatbot memory database was not found at ${this.memoryDbPath}; chatbot plugin disabled.`);
-            return;
-        }
         this.memoryDb = new Database(this.memoryDbPath);
         if (!this.initializeTables()) return;
         if (!this.initializeProfileDatabases()) {
@@ -313,8 +312,21 @@ class AiChatbotPlugin {
     }
 
     initializeTables() {
+        this.memoryDb.exec(`
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                username TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_chat_history_channel_id
+                ON chat_history(channel_id, id DESC);
+        `);
+
         const requiredColumns = {
-            chat_history: ['channel_id', 'role', 'username', 'content']
+            chat_history: ['id', 'channel_id', 'role', 'username', 'content']
         };
         const missingSchema = [];
         for (const [table, columns] of Object.entries(requiredColumns)) {
@@ -329,6 +341,7 @@ class AiChatbotPlugin {
             this.memoryDb.close();
             return false;
         }
+        info(`AI chatbot memory database initialized at ${this.memoryDbPath}.`);
         return true;
     }
 
@@ -343,18 +356,30 @@ class AiChatbotPlugin {
             'creature_profile_history.db',
             path.resolve(__dirname, '../../creature_profile_history.db')
         );
-        for (const [fileName, filePath] of [
-            ['creature_profiles.db', profilesPath],
-            ['creature_profile_history.db', historyPath]
-        ]) {
-            if (!fs.existsSync(filePath)) {
-                error(`AI chatbot ${fileName} was not found at ${filePath}; chatbot plugin disabled.`);
-                return false;
-            }
-        }
-
-        this.creatureProfilesDb = new Database(profilesPath, { fileMustExist: true });
+        this.creatureProfilesDb = new Database(profilesPath);
         this.creatureProfilesDb.prepare('ATTACH DATABASE ? AS profile_history').run(historyPath);
+        this.creatureProfilesDb.exec(`
+            CREATE TABLE IF NOT EXISTS main.creature_profiles (
+                thread_id TEXT PRIMARY KEY,
+                source_channel_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                synced_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS main.idx_creature_profiles_source_title
+                ON creature_profiles(source_channel_id, title COLLATE NOCASE);
+            CREATE TABLE IF NOT EXISTS profile_history.creature_profile_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                thread_id TEXT NOT NULL,
+                source_channel_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                change_type TEXT NOT NULL,
+                archived_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS profile_history.idx_profile_versions_source_archived
+                ON creature_profile_versions(source_channel_id, archived_at DESC);
+        `);
         const requiredTables = [
             {
                 schema: 'main',
@@ -383,6 +408,7 @@ class AiChatbotPlugin {
             this.creatureProfilesDb.close();
             return false;
         }
+        info(`AI chatbot profile databases initialized at ${profilesPath} and ${historyPath}.`);
         return true;
     }
 
@@ -400,7 +426,7 @@ class AiChatbotPlugin {
     async onReady() {
         info(`AI chatbot ${this.botName} is ready at ${this.serverUrl}.`);
         const forumChannelIds = [...new Set([
-            process.env.FORUM_CHANNEL_ID,
+            getProfilesForumChannelId(),
             process.env.RULES_FORUM_CHANNEL_ID
         ].filter(Boolean))];
         if (forumChannelIds.length === 0) return;
@@ -574,7 +600,7 @@ class AiChatbotPlugin {
 
     getConfiguredForumChannelId(thread) {
         if (!thread) return null;
-        return [process.env.FORUM_CHANNEL_ID, process.env.RULES_FORUM_CHANNEL_ID]
+        return [getProfilesForumChannelId(), process.env.RULES_FORUM_CHANNEL_ID]
             .find(channelId => channelId && thread.parentId === channelId) || null;
     }
 
@@ -602,7 +628,7 @@ class AiChatbotPlugin {
 
     async handleMessage(message) {
         const webChatEmbed = message.author.id === this.client.user.id
-            ? message.embeds.find(embed => embed.footer?.text?.startsWith('echo-web-chat:'))
+            ? message.embeds.find(embed => getWebChatUserId(embed))
             : null;
         if ((message.author.bot && !webChatEmbed) || message.channel.id !== this.channelId) return;
         const sourceContent = webChatEmbed?.description || message.content;
@@ -613,7 +639,7 @@ class AiChatbotPlugin {
             try {
                 const repliedMessage = await message.channel.messages.fetch(message.reference.messageId);
                 const replyIsWebChat = repliedMessage.author.id === this.client.user.id &&
-                    repliedMessage.embeds.some(embed => embed.footer?.text?.startsWith('echo-web-chat:'));
+                    repliedMessage.embeds.some(embed => getWebChatUserId(embed));
                 isReplyToBot = repliedMessage.author.id === this.client.user.id && !replyIsWebChat;
             } catch (err) {
                 warn(`AI chatbot could not fetch the replied-to message: ${err.message}`);
@@ -632,9 +658,22 @@ class AiChatbotPlugin {
         insertMessage.run(message.channel.id, 'user', messageAuthorName, cleanPrompt || '[Context]');
 
         let typingInterval;
+        const webServer = this.client.webServer;
+        const webTypingKey = `ai:${message.id}`;
+        const setWebTyping = active => webServer?.setChatTypingUser(
+            webTypingKey,
+            this.client.user.id,
+            message.guild?.members?.me?.displayName
+                || this.client.user.globalName
+                || this.botName,
+            'discord',
+            active
+        );
         try {
+            setWebTyping(true);
             await message.channel.sendTyping();
             typingInterval = setInterval(() => {
+                setWebTyping(true);
                 message.channel.sendTyping().catch(err => warn(`AI chatbot typing indicator failed: ${err.message}`));
             }, 4000);
 
@@ -642,7 +681,7 @@ class AiChatbotPlugin {
                 SELECT role, username, content FROM chat_history
                 WHERE channel_id = ? ORDER BY id DESC LIMIT 15
             `).all(message.channel.id).reverse();
-            const forumChannelId = process.env.FORUM_CHANNEL_ID;
+            const forumChannelId = getProfilesForumChannelId();
             const rulesForumChannelId = process.env.RULES_FORUM_CHANNEL_ID;
             const creatureProfiles = forumChannelId
                 ? this.creatureProfilesDb.prepare(`
@@ -705,7 +744,7 @@ class AiChatbotPlugin {
             const responseHistory = hasReferenceContext
                 ? history.slice(-1)
                 : history;
-            const systemPrompt = `You are ${this.botName}, a natural, friendly member of this Discord server, which is for a community of gamers who play on the "Emerald Echoes Fantasy Semi-Realism" game server for the game "Path of Titans" by Alderon Games. Your primary role is to assist the questions other members of the community may pose to you, especially in regards to the profiles of every playable creature, the rules of the Discord server, the rules of the game server, and how these things interplay with each other. Speak informally, adapt to the group's tone, keep your answers relatively concise, and do not act like a rigid assistant. Respond naturally to the chat history provided. Additionally, try to refrain from bringing up profiles unless explicitly asked or alluded to, unless you truly feel including it contributes to or adds context to the conversation. Also, if you do not have any information regarding something, please refrain from making up facrs. If there is nothing in chat or profile history related to the something, then you shod explain that while you'd love to assist, you do not have enough information to confidently provide information.
+            const systemPrompt = `You are ${this.botName}, a natural, friendly member of this Discord server, which is for a community of gamers who play on the "Emerald Echoes Fantasy Semi-Realism" game server for the game "Path of Titans" by Alderon Games. Your primary role is to assist the questions other members of the community may pose to you, especially in regards to the profiles of every playable creature, the rules of the Discord server, the rules of the game server, and how these rules interplay with one another. Speak informally, adapt to the group's tone, keep your answers relatively concise, and do not act like a rigid assistant. Respond naturally to the chat history provided. Additionally, try to refrain from bringing up profiles unless explicitly asked or alluded to, unless you truly feel including it contributes to or adds context to the conversation. Also, if you do not have any information regarding something, please refrain from making up facts. Newer Profiles supercede older ones. If there is nothing in chat or profile history related to the something, then you shouldd explain that while you'd love to assist, you do not have enough information to confidently provide information.
 
 You are running bot version ${this.botVersion}. If asked which version you are running, report exactly ${this.botVersion}.
 
@@ -737,6 +776,7 @@ When a complete creature-profile catalog is provided, use it to answer requests 
             }
         } finally {
             if (typingInterval) clearInterval(typingInterval);
+            setWebTyping(false);
         }
     }
 }

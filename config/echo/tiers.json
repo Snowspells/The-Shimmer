@@ -1,0 +1,5 @@
+{
+    "Echo Fragments": { "singular": "Echo Fragment", "breakChance": 0.5 },
+    "Echo Shards": { "singular": "Echo Shard", "breakChance": 0.25 },
+    "Echo Cores": { "singular": "Echo Core", "breakChance": 0.1 }
+}

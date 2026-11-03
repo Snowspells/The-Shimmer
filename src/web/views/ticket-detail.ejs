@@ -35,7 +35,7 @@
                 <% messages.forEach(function(message) { %>
                     <article class="message-entry" data-message-id="<%= message.id %>">
                         <strong><%= message.author_type === 'system' ? 'System' : message.author_name %></strong>
-                        <span class="message-time"><%= message.created_at ? new Date(message.created_at).toLocaleString() : '' %></span>
+                        <span class="message-time"><%- timeTag(message.created_at, 'datetime', '') %></span>
                         <pre class="message-content" style="white-space: pre-wrap; overflow-wrap: anywhere;"><%= message.content %></pre>
                     </article>
                 <% }); %>
@@ -43,12 +43,22 @@
         </section>
 
         <% if (canReply) { %>
-            <form id="ticket-reply-form" class="inline-form" style="margin-top: 1rem;">
-                <label for="ticket-reply">Reply</label>
-                <textarea id="ticket-reply" name="content" maxlength="1900" required rows="4" style="width: 100%;"></textarea>
-                <button type="submit" class="btn btn-primary">Send Reply</button>
-                <button type="button" id="ticket-close" class="btn btn-danger">Close Ticket</button>
-            </form>
+            <section class="ticket-entry-section admin-section">
+                <h2>Reply</h2>
+                <form id="ticket-reply-form" class="suggestion-form">
+                    <label for="ticket-reply">Message</label>
+                    <textarea id="ticket-reply" name="content" maxlength="1900" required rows="4"></textarea>
+                    <button type="submit" class="btn btn-primary">Send Reply</button>
+                </form>
+            </section>
+            <section class="ticket-entry-section admin-section">
+                <h2>Close Ticket</h2>
+                <form id="ticket-close-form" class="suggestion-form">
+                    <label for="ticket-close-reason">Reason for closing this ticket</label>
+                    <textarea id="ticket-close-reason" name="reason" maxlength="1000" required rows="3"></textarea>
+                    <button type="submit" id="ticket-close" class="btn btn-danger">Close Ticket</button>
+                </form>
+            </section>
             <p id="ticket-error" role="alert" class="text-muted"></p>
         <% } %>
 
@@ -63,6 +73,7 @@
                 const ticketId = <%= Number(ticket.id) %>;
                 const messagesElement = document.getElementById('ticket-messages');
                 const form = document.getElementById('ticket-reply-form');
+                const closeForm = document.getElementById('ticket-close-form');
                 const errorElement = document.getElementById('ticket-error');
                 let lastMessageId = Number(messagesElement.lastElementChild?.dataset.messageId || 0);
                 let isClosed = <%= ticket.status === 'closed' ? 'true' : 'false' %>;
@@ -75,7 +86,7 @@
                     author.textContent = message.author_type === 'system' ? 'System' : message.author_name;
                     const time = document.createElement('span');
                     time.className = 'message-time';
-                    time.textContent = message.created_at ? new Date(message.created_at).toLocaleString() : '';
+                    time.textContent = message.created_at ? window.formatServerDate(message.created_at) : '';
                     const content = document.createElement('pre');
                     content.className = 'message-content';
                     content.style.whiteSpace = 'pre-wrap';
@@ -124,16 +135,36 @@
                         }
                     });
 
-                    document.getElementById('ticket-close').addEventListener('click', async () => {
+                }
+
+                if (closeForm) {
+                    closeForm.addEventListener('submit', async event => {
+                        event.preventDefault();
                         if (!window.confirm('Close this ticket? You will still be able to view its transcript.')) return;
                         errorElement.textContent = '';
+                        const button = document.getElementById('ticket-close');
+                        button.disabled = true;
                         try {
-                            const response = await fetch(`/tickets/${ticketId}/close`, { method: 'POST' });
+                            const response = await fetch(`/tickets/${ticketId}/close`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    reason: document.getElementById('ticket-close-reason').value
+                                })
+                            });
                             const result = await response.json();
                             if (!response.ok) throw new Error(result.error || 'Could not close this ticket.');
+                            if (result.warning) {
+                                errorElement.textContent = result.warning;
+                                document.getElementById('ticket-close').disabled = true;
+                                window.setTimeout(() => window.location.reload(), 5000);
+                                return;
+                            }
                             window.location.reload();
                         } catch (err) {
                             errorElement.textContent = err.message;
+                        } finally {
+                            if (!isClosed) button.disabled = false;
                         }
                     });
                 }
@@ -142,7 +173,11 @@
     <% } %>
 
     <div class="back-link">
-        <a href="/tickets" class="btn">&larr; Back to Live Communication</a>
+        <% if (isStaff && ticket.creator_id !== user.id) { %>
+            <a href="/admin/tickets" class="btn">&larr; Back to Ticket Management</a>
+        <% } else { %>
+            <a href="/tickets" class="btn">&larr; Back to Live Communication</a>
+        <% } %>
     </div>
 </div>
 

@@ -1,0 +1,8 @@
+{
+    "maxInfractions": 6,
+    "alertThreshold": 3,
+    "judgements": {
+        "Behavioral": 2,
+        "Gameplay": 1
+    }
+}

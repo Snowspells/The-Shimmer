@@ -1,0 +1,104 @@
+<%- include('../partials/header', { title: 'Chat Moderation - Staff Panel', user }) %>
+
+<div class="admin">
+    <div class="admin-header">
+        <h1>Chat Moderation</h1>
+        <span class="staff-badge staff-level-<%= user.staffLevel %>"><%= user.staffLabel %></span>
+    </div>
+    <%- include('../partials/admin-nav', { active: 'chat', permissions }) %>
+
+    <% if (permissions.canManageChat) { %>
+    <div class="admin-section">
+        <h2>Web Chat Mutes</h2>
+        <form class="inline-form" onsubmit="return chatMute(event)">
+            <input type="text" id="chat-mute-user" class="input-sm" placeholder="Discord user ID" inputmode="numeric" pattern="\d{17,20}" required>
+            <input type="number" id="chat-mute-minutes" class="input-sm input-number" min="1" max="525600" placeholder="Minutes (blank=perm)">
+            <input type="text" id="chat-mute-reason" class="input-sm" placeholder="Reason" required>
+            <input type="url" id="chat-mute-evidence" class="input-sm" placeholder="Evidence URL" required>
+            <button type="submit" class="btn btn-sm btn-danger">Mute</button>
+        </form>
+        <% if (chatMutes.length > 0) { %>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>User ID</th><th>Muted By</th><th>Reason</th><th>Expires</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        <% chatMutes.forEach(function(m) { %>
+                            <tr>
+                                <td data-label="User ID"><code><%= m.user_id %></code></td>
+                                <td data-label="Muted By"><%= m.muted_by_name %></td>
+                                <td data-label="Reason"><%= m.reason || 'No reason given' %></td>
+                                <td data-label="Expires"><%- timeTag(m.expires_at, 'datetime', 'Never') %></td>
+                                <td class="actions-cell" data-label="Actions">
+                                    <button type="button" class="btn btn-sm btn-primary" data-unmute-user="<%= m.user_id %>" onclick="chatUnmute(this.dataset.unmuteUser)">Unmute</button>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+        <% } else { %>
+            <div class="empty-state"><p>No active web chat mutes.</p></div>
+        <% } %>
+        <script>
+            async function chatModerate(path, body) {
+                const r = await fetch(path, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) { alert('Failed: ' + (data.error || r.status)); return false; }
+                if (data.auditWarning) alert(data.auditWarning);
+                window.location.reload();
+                return true;
+            }
+            async function chatMute(e) {
+                e.preventDefault();
+                const body = {
+                    userId: document.getElementById('chat-mute-user').value.trim(),
+                    reason: document.getElementById('chat-mute-reason').value,
+                    evidenceUrl: document.getElementById('chat-mute-evidence').value
+                };
+                const minutes = document.getElementById('chat-mute-minutes').value;
+                if (minutes) body.duration = minutes;
+                await chatModerate('/chat/mute', body);
+                return false;
+            }
+            async function chatUnmute(userId) {
+                const reason = prompt('Reason for unmuting ' + userId + '?');
+                if (!reason || !reason.trim()) return;
+                const evidenceUrl = prompt('Evidence URL (https://...)?');
+                if (!evidenceUrl || !evidenceUrl.trim()) return;
+                await chatModerate('/chat/unmute', { userId, reason, evidenceUrl });
+            }
+        </script>
+    </div>
+    <% } %>
+
+    <% if (permissions.canManageChat) { %>
+    <div class="admin-section">
+        <h2>Recent Chat Bridge Messages</h2>
+        <% if (recentMessages.length > 0) { %>
+            <div class="message-log">
+                <% recentMessages.forEach(function(msg) { %>
+                    <div class="message-entry message-<%= msg.source %>">
+                        <span class="message-source">[<%= msg.source === 'discord' ? 'Discord' : 'Game' %>]</span>
+                        <span class="message-author"><%= msg.author_name %></span>
+                        <span class="message-content"><%= msg.content %></span>
+                        <span class="message-time"><%- timeTag(msg.timestamp, 'time', '') %></span>
+                    </div>
+                <% }); %>
+            </div>
+        <% } else { %>
+            <div class="empty-state">
+                <p>No chat bridge messages yet.</p>
+            </div>
+        <% } %>
+    </div>
+    <% } %>
+</div>
+
+<%- include('../partials/footer') %>
+

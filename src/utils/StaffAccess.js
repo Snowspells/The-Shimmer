@@ -3,6 +3,7 @@ const DatabaseManager = require('./Database');
 const ROLE_LEVELS = [
     { environmentVariable: 'STAFF_IN_TRAINING_ROLE_ID', level: DatabaseManager.STAFF_LEVELS.STAFF_IN_TRAINING },
     { environmentVariable: 'STAFF_ROLE_ID', level: DatabaseManager.STAFF_LEVELS.STAFF },
+    { environmentVariable: 'STAFF_HEAD_ROLE_ID', level: DatabaseManager.STAFF_LEVELS.STAFF_HEAD },
     { environmentVariable: 'OWNER_ROLE_ID', level: DatabaseManager.STAFF_LEVELS.OWNER }
 ];
 

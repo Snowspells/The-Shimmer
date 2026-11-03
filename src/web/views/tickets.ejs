@@ -1,4 +1,4 @@
-<%- include('partials/header', { title: 'Live Communication', user }) %>
+﻿<%- include('partials/header', { title: 'Live Communication', user }) %>
 
 <div class="tickets-page">
     <div class="page-header">
@@ -10,26 +10,26 @@
         </div>
     </div>
 
-    <% if (!isStaff) { %>
-        <% const activeTicket = tickets.find(ticket => ticket.ticket_mode === 'dm' && ticket.status === 'open'); %>
-        <section class="admin-section">
-            <h2>Start a conversation</h2>
-            <% if (activeTicket) { %>
-                <p>You already have an open ticket. Continue that conversation before opening another.</p>
-                <a class="btn btn-primary" href="/tickets/<%= activeTicket.id %>">Continue Ticket #<%= activeTicket.id %></a>
-            <% } else { %>
-                <p>A support ticket opens a private Discord DM with the bot. You can also read and reply here.</p>
-                <form method="post" action="/tickets" class="inline-form">
-                    <label for="ticket-subject">What do you need help with?</label>
-                    <input id="ticket-subject" name="subject" type="text" maxlength="150" placeholder="Brief subject" required>
-                    <button type="submit" class="btn btn-primary">Open Ticket</button>
-                </form>
-            <% } %>
-        </section>
-    <% } %>
+    <% const activeTicket = tickets.find(ticket =>
+        ticket.ticket_mode === 'dm' && ticket.status === 'open' && ticket.creator_id === user.id
+    ); %>
+    <section class="ticket-entry-section admin-section">
+        <h2>Start a conversation</h2>
+        <% if (activeTicket) { %>
+            <p>You already have an open ticket. Continue that conversation before opening another.</p>
+            <a class="btn btn-primary" href="/tickets/<%= activeTicket.id %>">Continue Ticket #<%= activeTicket.id %></a>
+        <% } else { %>
+            <p>A support ticket opens a private Discord DM with the bot. You can also read and reply here.</p>
+            <form method="post" action="/tickets" class="suggestion-form">
+                <label for="ticket-subject">What do you need help with?</label>
+                <input id="ticket-subject" name="subject" type="text" maxlength="150" placeholder="Brief subject" required>
+                <button type="submit" class="btn btn-primary">Open Ticket</button>
+            </form>
+        <% } %>
+    </section>
 
     <section class="admin-section">
-        <h2><%= isStaff ? 'Ticket Inbox' : 'Your Ticket History' %></h2>
+        <h2>Your Ticket History</h2>
         <% if (tickets.length > 0) { %>
             <div class="table-wrapper">
                 <table class="data-table">
@@ -37,7 +37,6 @@
                         <tr>
                             <th>ID</th>
                             <th>Subject</th>
-                            <% if (isStaff) { %><th>Created By</th><% } %>
                             <th>Status</th>
                             <th>Created</th>
                             <th>Conversation</th>
@@ -46,16 +45,13 @@
                     <tbody>
                         <% tickets.forEach(function(ticket) { %>
                             <tr>
-                                <td><code>#<%= ticket.id %></code></td>
-                                <td><%= ticket.subject %></td>
-                                <% if (isStaff) { %>
-                                    <td><%= ticket.creator_name %><br><code class="text-muted"><%= ticket.creator_id %></code></td>
-                                <% } %>
-                                <td><span class="ticket-status ticket-<%= ticket.status %>"><%= ticket.status %></span></td>
-                                <td><%= ticket.created_at ? new Date(ticket.created_at).toLocaleString() : 'N/A' %></td>
-                                <td>
+                                <td data-label="ID"><code>#<%= ticket.id %></code></td>
+                                <td data-label="Subject"><%= ticket.subject %></td>
+                                <td data-label="Status"><span class="ticket-status ticket-<%= ticket.status %>"><%= ticket.status %></span></td>
+                                <td data-label="Created"><%- timeTag(ticket.created_at) %></td>
+                                <td data-label="Conversation">
                                     <% if (ticket.ticket_mode === 'dm' && ticket.status === 'open') { %>
-                                        <a href="/tickets/<%= ticket.id %>" class="btn btn-sm btn-primary"><%= isStaff ? 'Respond' : 'Continue' %></a>
+                                        <a href="/tickets/<%= ticket.id %>" class="btn btn-sm btn-primary">Continue</a>
                                     <% } else if (ticket.ticket_mode === 'dm' || ticket.status === 'closed') { %>
                                         <a href="/tickets/<%= ticket.id %>/transcript" class="btn btn-sm">View transcript</a>
                                     <% } else { %>
@@ -72,11 +68,5 @@
         <% } %>
     </section>
 </div>
-
-<% if (isStaff) { %>
-    <script>
-        window.setInterval(() => window.location.reload(), 15000);
-    </script>
-<% } %>
 
 <%- include('partials/footer') %>

@@ -1,0 +1,14 @@
+[
+    "Health",
+    "Stamina",
+    "Oxygen",
+    "Hunger",
+    "Thirst",
+    "Growth",
+    "Damage",
+    "Weight",
+    "WalkSpeed",
+    "TrotSpeed",
+    "SprintSpeed",
+    "SwimSpeed"
+]

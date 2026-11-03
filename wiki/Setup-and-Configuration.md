@@ -69,7 +69,9 @@ DEVELOPER_USER_ID=your_discord_user_id
 MODERATION_LOG_CHANNEL_ID=discord_channel_id_for_moderation_audit_logs
 
 # ── Suggestions Board ────────────────────────────────────
-SUGGESTION_LOG_CHANNEL_ID=discord_channel_id_for_suggestion_decline_logs
+SUGGESTION_LOG_CHANNEL_ID=discord_channel_id_for_suggestion_card_audit_logs
+USER_CHANGE_LOG_CHANNEL_ID=discord_channel_id_for_marks_and_inventory_change_logs
+BUG_LOG_CHANNEL_ID=discord_channel_id_for_bug_report_and_status_logs
 
 # ── Chat Bridge ─────────────────────────────────────────
 BRIDGE_CHANNEL_ID=discord_channel_id_for_chat_bridge
@@ -80,10 +82,12 @@ GAME_WEBHOOK_URL=http://your-game-server.com/api/chat   # legacy fallback only
 # Uncomment and set both values to enable the plugin.
 # AI_SERVER_URL=http://localhost:6969/v1
 # AI_CHAT_CHANNEL_ID=discord_channel_id_for_ai_chat
+# Optional separate Discord channel for the webchat Staff tab.
+# STAFF_CHAT_CHANNEL_ID=discord_channel_id_for_staff_chat
 # AI_BOT_ACCOUNT_NAME=Shimmer
 # AI_MODEL=trinity
 # AI_API_KEY=local-matrix
-# FORUM_CHANNEL_ID=discord_creature_profiles_forum_channel
+# PROFILES_CHANNEL_ID=discord_creature_profiles_forum_channel
 # RULES_FORUM_CHANNEL_ID=discord_in_game_rules_forum_channel
 
 # ── Path of Titans (RCON + server webhook) ──────────────
@@ -116,17 +120,20 @@ LOG_LEVEL=info
 | `OWNER_ROLE_ID` | No | Discord role ID for the Owner website access level, including `/reload`. |
 | `DEVELOPER_USER_ID` | No | Discord user ID granted Developer access to all website capabilities and bot commands. This identity takes precedence over configured role levels. |
 | `MODERATION_LOG_CHANNEL_ID` | For moderation | Discord text-channel ID for the required moderation audit log. Kick, ban, mute, unmute, and chat-message deletion actions require a reason and an HTTP(S) evidence URL; the bot must be able to view, send messages, and embed links in this channel. If it is unset or unavailable, these actions are blocked. |
-| `SUGGESTION_LOG_CHANNEL_ID` | For suggestion declines | Discord text-channel ID where Owner/Developer decline decisions and their reasons are posted. The bot must be able to view the channel, send messages, and embed links. Declines are blocked when the channel cannot be reached. |
+| `USER_CHANGE_LOG_CHANNEL_ID` | Optional | Discord text-channel ID where Marks and Inventory changes made to a user by someone else are logged. Bot needs View Channel, Send Messages, and Embed Links. Staff with Manage Server also see these changes in the notification bar. |
+| `BUG_LOG_CHANNEL_ID` | Optional | Discord text-channel ID where new bug reports and bug changes (status, severity, edits, deletions) are logged. Comments are not logged. Bot needs View Channel, Send Messages, and Embed Links. |
+| `SUGGESTION_LOG_CHANNEL_ID` | For suggestion audit logs | Discord text-channel ID where suggestion submissions and card creations, edits, status changes, declines, and deletions are logged. Comments are excluded. The bot must be able to view the channel, send messages, and embed links. |
 | `BRIDGE_CHANNEL_ID` | For bridge | The Discord channel ID that serves as the bridge endpoint |
 | `BRIDGE_API_KEY` | For bridge | Shared secret key for authenticating game server API requests |
 | `GAME_WEBHOOK_URL` | No | Legacy HTTP relay URL, used only when no RCON server is configured |
 | `AI_SERVER_URL` | For AI chatbot | OpenAI-compatible inference server URL (for example, `http://localhost:6969/v1`). The plugin stays disabled unless this and `AI_CHAT_CHANNEL_ID` are set. |
 | `AI_CHAT_CHANNEL_ID` | For AI chatbot | Discord channel where the chatbot listens and responds. `ALLOWED_CHANNEL_ID` is also accepted for compatibility with the standalone chatbot configuration. |
+| `STAFF_CHAT_CHANNEL_ID` | For staff web chat | Separate Discord text channel relayed to the webchat Staff tab. Staff in Training, Staff, Owners, and Developer can view and send messages; other web users cannot access its history, messages, or typing indicators. The bot needs View Channel, Read Message History, and Send Messages. Use a different channel from `AI_CHAT_CHANNEL_ID`. |
 | `AI_BOT_ACCOUNT_NAME` | No | Name trigger and conversational persona (default: `Shimmer`). `BOT_ACCOUNT_NAME` is accepted as a fallback. |
 | `AI_BOT_VERSION` | No | Version the assistant reports when asked (defaults to the project's package version). |
 | `AI_MODEL` | No | Model name sent to the inference server (default: `trinity`). |
 | `AI_API_KEY` | No | API key for inference servers that require one (default: `local-matrix`, suitable for local servers). |
-| `FORUM_CHANNEL_ID` | No | Forum channel containing creature profiles to sync into chatbot context. The bot needs View Channel and Read Message History permissions there. |
+| `PROFILES_CHANNEL_ID` | No | Forum channel containing creature profiles to sync into chatbot context. The bot needs View Channel and Read Message History permissions there. `FORUM_CHANNEL_ID` is accepted as a legacy fallback. |
 | `RULES_FORUM_CHANNEL_ID` | No | Forum channel containing baseline in-game rules. The bot synchronizes current posts and archives superseded/deleted versions alongside profile history. |
 | `RCON_HOST` / `RCON_PORT` / `RCON_PASSWORD` | For PoT | Path of Titans RCON connection (see [Path of Titans Integration](Path-of-Titans-Integration.md)) |
 | `GAME_CHAT_CHANNEL_ID` | For PoT inbound | Discord channel the PoT server webhook posts in-game chat/joins to |
@@ -165,17 +172,19 @@ In the Developer Portal under **Bot**, enable:
 
 Moderation actions initiated from the website or `/server kick` and `/server ban` require a reason and HTTP(S) evidence URL. The bot records a pending audit entry before performing an action, then marks the entry completed or failed.
 
-The suggestions board is available to linked members at `/suggestions`. Set `SUGGESTION_LOG_CHANNEL_ID` to a Discord text channel where the bot can send messages and embeds; only Owner/Developer declines are sent there. Suggestion submissions and progress updates remain on the website.
+The suggestions board is available to linked members at `/suggestions`. Set `SUGGESTION_LOG_CHANNEL_ID` to a Discord text channel where the bot can send messages and embeds. Suggestion submissions and all card modifications are logged there; comments are intentionally excluded.
 
 The AI chatbot also needs **Message Content Intent**, **View Channel**, **Send Messages**, and **Read Message History** in its configured channel. If creature-profile sync is enabled, grant View Channel and Read Message History for the configured forum as well.
 
 ### AI Chatbot Plugin
 
-The optional AI chatbot runs inside The Shimmer's existing Discord client; it does not create a second bot login. Configure both `AI_SERVER_URL` and `AI_CHAT_CHANNEL_ID` to enable it. In that channel it responds when mentioned, when someone replies to one of its messages, or when its configured name is used. Conversation history is read from and stored in `chat_history` under `data/chat-memory/memory.db`. Current creature profiles and rules are read from `creature_profiles` under `data/creature-profiles/creature_profiles.db`; superseded and deleted versions are read from `creature_profile_versions` under `data/creature-profile-history/creature_profile_history.db`, distinguished by source forum ID. The plugin validates required tables and columns and disables itself with an error if a database or required schema is missing. It syncs active and public archived posts at startup, then updates local records when forum posts or their messages change. Set `FORUM_CHANNEL_ID` and `RULES_FORUM_CHANNEL_ID` to the respective forums; without `FORUM_CHANNEL_ID`, existing profile records are still queried, and without `RULES_FORUM_CHANNEL_ID`, no baseline rule context is loaded. Relevant creature-specific profile rules are treated as permitted overrides of baseline rules. Future self-assignable modifiers are not yet implemented or supplied to the chatbot. Prompt size is capped at 4,500 characters and completion at 512 tokens.
+Set `STAFF_CHAT_CHANNEL_ID` to give Staff in Training, Staff, Owners, and the Developer a Staff tab in webchat connected to a separate Discord text channel. The bot needs View Channel, Read Message History, and Send Messages there. The staff channel must differ from the AI/community chat channel; staff-only history, messages, and typing indicators are access-controlled server-side.
+
+The optional AI chatbot runs inside The Shimmer's existing Discord client; it does not create a second bot login. Configure both `AI_SERVER_URL` and `AI_CHAT_CHANNEL_ID` to enable it. In that channel it responds when mentioned, when someone replies to one of its messages, or when its configured name is used. Conversation history is read from and stored in `chat_history` under `data/chat-memory/memory.db`. Current creature profiles and rules are read from `creature_profiles` under `data/creature-profiles/creature_profiles.db`; superseded and deleted versions are read from `creature_profile_versions` under `data/creature-profile-history/creature_profile_history.db`, distinguished by source forum ID. On startup, the plugin creates any missing database files and required tables without replacing existing records; an existing incompatible schema still disables the plugin with an error. It syncs active and public archived posts at startup, then updates local records when forum posts or their messages change. Set `PROFILES_CHANNEL_ID` and `RULES_FORUM_CHANNEL_ID` to the respective forums; `FORUM_CHANNEL_ID` remains supported as a legacy fallback for the profile forum. Without a profile forum ID, existing profile records are still queried, and without `RULES_FORUM_CHANNEL_ID`, no baseline rule context is loaded. Relevant creature-specific profile rules are treated as permitted overrides of baseline rules. Future self-assignable modifiers are not yet implemented or supplied to the chatbot. Prompt size is capped at 4,500 characters and completion at 512 tokens.
 
 ### Ticket conversations
 
-The existing `/ticketsetup panel` command still posts the button used to create a ticket. New tickets open a private DM with the bot; the user and staff can reply either in that DM or on the website's **Live Communication** page. A user can have one open DM ticket at a time. Staff in Training and higher can view and manage all tickets. Existing channel-based tickets and saved transcripts remain available as read-only history. The bot must be allowed to send DMs to members who open tickets.
+The existing `/ticketsetup panel` command still posts the button used to create a ticket. Set the per-server ticket event log channel with `/ticketsetup log-channel channel:#ticket-logs`; it is saved in the bot database, not `.env`. New tickets open a private DM with the bot; the user and staff can reply either in that DM or on the website's **Live Communication** page. Closing a ticket saves an HTML transcript and sends it to the ticket creator as a DM attachment. A user can have one open DM ticket at a time. Staff in Training and higher can view and manage all tickets. Existing channel-based tickets and saved transcripts remain available as read-only history. The bot must be allowed to send DMs to members who open tickets.
 
 The inference server is a separate process and must be running and reachable at `AI_SERVER_URL`; The Shimmer does not download or start a language model.
 

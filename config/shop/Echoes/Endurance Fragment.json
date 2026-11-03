@@ -1,0 +1,5 @@
+{
+    "description": "Gives a new Echo Fragment (Endurance Fragment).",
+    "price": 100,
+    "echo": { "tier": "Echo Fragments", "name": "Endurance Fragment" }
+}

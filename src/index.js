@@ -3,6 +3,9 @@ const fs = require('fs');
 const DiscordBot = require('./client/DiscordBot');
 const WebServer = require('./web/server');
 const RconManager = require('./utils/RconManager');
+const { EchoManager } = require('./utils/EchoManager');
+const { InfractionManager } = require('./utils/InfractionManager');
+const { PassiveRewards } = require('./utils/PassiveRewards');
 
 fs.writeFileSync('./terminal.log', '', 'utf-8');
 const client = new DiscordBot();
@@ -19,6 +22,18 @@ web.start();
 const rcon = new RconManager();
 client.rcon = rcon;
 rcon.connectAll();
+
+const echo = new EchoManager(client);
+client.echo = echo;
+echo.start();
+
+const infractions = new InfractionManager(client);
+client.infractions = infractions;
+infractions.start();
+
+const passive = new PassiveRewards(client);
+client.passiveRewards = passive;
+passive.start();
 
 const { error, info } = require('./utils/Console');
 process.on('unhandledRejection', (err) => error('Unhandled Rejection', err));
@@ -40,6 +55,9 @@ const shutdown = (signal) => {
         };
 
         await runShutdownStep('web server', () => web.stop());
+        echo.stop();
+        infractions.stop();
+        passive.stop();
         await runShutdownStep('RCON connections', () => rcon.disconnectAll());
         client.stopStatusRotation();
         await runShutdownStep('Discord client', () => client.destroy());

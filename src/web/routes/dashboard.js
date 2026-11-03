@@ -5,6 +5,10 @@ const router = express.Router();
 
 router.get('/', requireAuth, attachWebPermissions, (req, res) => {
     const user = req.session.user;
+    req.db.markNotificationsViewed(user.id, {
+        scope: 'private',
+        includeRecipient: true
+    });
     const linkedAccount = req.db.getUserByDiscordId(user.id);
 
     let inventory = [];

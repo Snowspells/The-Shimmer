@@ -8,10 +8,16 @@ const WEB_PERMISSIONS = Object.freeze({
     VIEW_STAFF_PANEL: 'canViewStaffPanel',
     MANAGE_CHAT: 'canManageChat',
     MANAGE_SERVER: 'canManageServer',
+    USE_RCON: 'canUseRcon',
     KICK_PLAYERS: 'canKickPlayers',
     BAN_PLAYERS: 'canBanPlayers',
+    MUTE_PLAYERS: 'canMutePlayers',
     MANAGE_TICKETS: 'canManageTickets',
     MANAGE_ECONOMY: 'canManageEconomy',
+    MANAGE_ECHO: 'canManageEcho',
+    MANAGE_SHOP: 'canManageShop',
+    JUDGE_REPORTS: 'canJudgeReports',
+    DECIDE_APPEALS: 'canDecideAppeals',
     REFRESH_COMMANDS: 'canRefreshCommands'
 });
 
@@ -44,6 +50,7 @@ async function resolveWebPermissions(req, user) {
     const staffLevel = await resolveStaffLevel(req.discordClient, user.id);
     const isStaffInTraining = staffLevel >= STAFF_LEVELS.STAFF_IN_TRAINING;
     const isStaff = staffLevel >= STAFF_LEVELS.STAFF;
+    const isStaffHead = staffLevel >= STAFF_LEVELS.STAFF_HEAD;
     const isOwner = staffLevel >= STAFF_LEVELS.OWNER;
     const isDeveloper = staffLevel >= STAFF_LEVELS.DEVELOPER;
 
@@ -51,10 +58,16 @@ async function resolveWebPermissions(req, user) {
         canViewStaffPanel: isStaff,
         canManageChat: isStaff,
         canManageServer: isStaff,
+        canUseRcon: isOwner,
         canKickPlayers: isStaff,
         canBanPlayers: isStaff,
+        canMutePlayers: isStaff,
         canManageTickets: isStaffInTraining,
-        canManageEconomy: isStaff,
+        canManageEconomy: isStaffHead,
+        canManageEcho: isStaffHead,
+        canManageShop: isStaffHead,
+        canJudgeReports: isStaffInTraining,
+        canDecideAppeals: isStaff,
         canRefreshCommands: isOwner,
         canManageAllCommands: isDeveloper,
         staffLevel,
@@ -68,10 +81,16 @@ function noWebPermissions() {
         canViewStaffPanel: false,
         canManageChat: false,
         canManageServer: false,
+        canUseRcon: false,
         canKickPlayers: false,
         canBanPlayers: false,
+        canMutePlayers: false,
         canManageTickets: false,
         canManageEconomy: false,
+        canManageEcho: false,
+        canManageShop: false,
+        canJudgeReports: false,
+        canDecideAppeals: false,
         canRefreshCommands: false,
         canManageAllCommands: false,
         staffLevel: 0,

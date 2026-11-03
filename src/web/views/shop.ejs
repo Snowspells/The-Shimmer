@@ -1,0 +1,39 @@
+<%- include('partials/header', { title: 'Shop', user }) %>
+
+<div class="dashboard">
+    <h1>Shop</h1>
+    <% if (!linkedAccount) { %>
+        <div class="not-linked">
+            <h2>Account Not Linked</h2>
+            <p>Link your game account to spend Marks.</p>
+        </div>
+    <% } else { %>
+        <p>You have <strong><%= linkedAccount.marks %></strong> Marks.</p>
+        <% if (purchased) { %><p>Purchased <strong><%= purchased %></strong>.</p><% } %>
+
+        <% if (categories.length === 0) { %>
+            <div class="empty-state"><p>The shop is empty right now.</p></div>
+        <% } %>
+
+        <% categories.forEach(function(category) { %>
+            <div class="inventory-section">
+                <h2><%= category.name %></h2>
+                <div class="inventory-grid">
+                    <% category.items.forEach(function(item) { %>
+                        <div class="inventory-item">
+                            <strong><%= item.name %></strong>
+                            <% if (item.description) { %><p><%= item.description %></p><% } %>
+                            <p><%= item.price %> Marks</p>
+                            <form method="post" action="/shop/buy">
+                                <input type="hidden" name="id" value="<%= item.id %>">
+                                <button class="btn btn-sm btn-primary" type="submit" <%= linkedAccount.marks < item.price ? 'disabled' : '' %>>Buy</button>
+                            </form>
+                        </div>
+                    <% }); %>
+                </div>
+            </div>
+        <% }); %>
+    <% } %>
+</div>
+
+<%- include('partials/footer') %>

@@ -1,17 +1,26 @@
-<aside id="mini-chat" class="mini-chat">
-    <button id="mini-chat-toggle" class="mini-chat-toggle" type="button" aria-expanded="false" aria-controls="mini-chat-panel">
-        <span>Community Chat</span>
-        <span id="mini-chat-status" class="mini-chat-status">Connecting</span>
-    </button>
-    <section id="mini-chat-panel" class="mini-chat-panel" hidden aria-label="Discord channel chat">
+<aside id="mini-chat" class="mini-chat" data-user-id="<%= user.id %>">
+    <section id="mini-chat-panel" class="mini-chat-panel" aria-label="Discord channel chat">
         <header class="mini-chat-header">
-            <strong>Discord Chat</strong>
-            <button id="mini-chat-close" type="button" class="mini-chat-close" aria-label="Close chat">×</button>
+            <div class="mini-chat-header-main">
+                <strong id="mini-chat-title">Community Chat</strong>
+                <div class="mini-chat-tabs" role="tablist" aria-label="Chat channels">
+                    <button type="button" class="mini-chat-tab active" role="tab"
+                            aria-selected="true" data-chat-channel="community">Community <span class="mini-chat-badge" data-unread-channel="community" hidden></span></button>
+                    <button type="button" class="mini-chat-tab" role="tab"
+                            aria-selected="false" data-chat-channel="staff" hidden>Staff <span class="mini-chat-badge" data-unread-channel="staff" hidden></span></button>
+                </div>
+            </div>
+            <span id="mini-chat-status" class="mini-chat-status">Connecting</span>
         </header>
         <div id="mini-chat-messages" class="mini-chat-messages" aria-live="polite">
             <p class="mini-chat-placeholder">Connecting to the community channel…</p>
         </div>
+        <p id="mini-chat-typing" class="mini-chat-typing" aria-live="polite" hidden></p>
         <p id="mini-chat-error" class="mini-chat-error" role="status"></p>
+        <div id="mini-chat-reply" class="mini-chat-reply-bar" hidden>
+            <span id="mini-chat-reply-label"></span>
+            <button id="mini-chat-reply-cancel" type="button" class="mini-chat-close" aria-label="Cancel reply">×</button>
+        </div>
         <form id="mini-chat-form" class="mini-chat-form">
             <input id="mini-chat-input" type="text" maxlength="1900" autocomplete="off"
                    placeholder="Message this Discord channel…" aria-label="Chat message" required>

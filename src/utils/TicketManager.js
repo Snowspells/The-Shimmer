@@ -1,9 +1,32 @@
-const { ChannelType } = require('discord.js');
+const { ChannelType, EmbedBuilder } = require('discord.js');
 const { error, info, warn } = require('./Console');
 
 class TicketManager {
     constructor(client) {
         this.client = client;
+    }
+
+    async logTicketEvent(ticket, { title, color, fields }) {
+        const settings = this.client.database.getTicketSettings(ticket.guild_id);
+        if (!settings?.log_channel_id) return;
+
+        try {
+            const channel = await this.client.channels.fetch(settings.log_channel_id);
+            if (!channel?.isTextBased() || typeof channel.send !== 'function') {
+                throw new Error('Configured ticket log channel is not a text channel.');
+            }
+            await channel.send({
+                embeds: [new EmbedBuilder()
+                    .setColor(color)
+                    .setTitle(title)
+                    .addFields(fields)
+                    .setTimestamp()
+                ],
+                allowedMentions: { parse: [] }
+            });
+        } catch (err) {
+            warn(`Could not post ${title.toLowerCase()} for ticket #${ticket.id}: ${err.message}`);
+        }
     }
 
     registerEvents() {
@@ -55,6 +78,14 @@ class TicketManager {
             info(`DM ticket #${ticketId} created for ${displayName} (${user.id}).`);
             const ticket = this.client.database.getTicket(ticketId);
             if (!ticket) throw new Error('Could not reload the newly-created support ticket.');
+            await this.logTicketEvent(ticket, {
+                title: 'DM Ticket Created',
+                color: 0x57f287,
+                fields: [
+                    { name: 'Ticket', value: `#${ticket.id}`, inline: true },
+                    { name: 'Created By', value: `<@${user.id}>`, inline: true }
+                ]
+            });
             return ticket;
         } catch (err) {
             this.client.database.deleteDmTicket(ticketId);

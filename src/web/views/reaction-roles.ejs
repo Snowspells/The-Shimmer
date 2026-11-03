@@ -89,11 +89,11 @@
                     <tbody>
                         <% panels.forEach(function(panel) { %>
                             <tr>
-                                <td><%= panel.name %></td>
-                                <td>#<%= panel.channelName %></td>
-                                <td><%= panel.mappingsList.length %></td>
-                                <td><%= panel.message_id ? 'Published' : 'Draft' %></td>
-                                <td>
+                                <td data-label="Name"><%= panel.name %></td>
+                                <td data-label="Channel">#<%= panel.channelName %></td>
+                                <td data-label="Mappings"><%= panel.mappingsList.length %></td>
+                                <td data-label="State"><%= panel.message_id ? 'Published' : 'Draft' %></td>
+                                <td data-label="Actions">
                                     <div class="button-row">
                                         <a class="btn btn-sm" href="/admin/reaction-roles?edit=<%= panel.id %>">Edit</a>
                                         <% if (panel.message_id) { %>

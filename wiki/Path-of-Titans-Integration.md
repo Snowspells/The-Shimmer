@@ -90,6 +90,8 @@ placeholders are substituted at send time.
 | `RCON_CMD_PLAYERLIST` | `getplayerlist` |
 | `RCON_CMD_KICK` | `kick {agid} {reason}` |
 | `RCON_CMD_BAN` | `ban {agid} {hours} {reason}` |
+| `RCON_CMD_MUTE` | `mute {agid} {minutes} {reason}` (`minutes` is `0` for a permanent mute) |
+| `RCON_CMD_UNMUTE` | `unmute {agid}` |
 | `RCON_CMD_HEAL` | `heal {agid}` |
 | `RCON_CMD_HEALALL` | `healall` |
 | `RCON_CMD_WHISPER` | `whisper {agid} {message}` |
@@ -153,9 +155,10 @@ a live player list, recently seen players (with AGIDs), and moderation controls:
 
 | Action | Required level |
 |--------|----------------|
-| View status / live players / recent players | Support |
-| Announce, Kick | Moderator |
-| Ban | Administrator |
+| View live players and recent players, Kick, Ban, Mute, Unmute | Staff or higher |
+| View connection status, Announce | Owner or Developer |
+
+Staff see only the moderation tools (live players, kick, ban, mute, unmute, recent players). Mutes and unmutes also require a reason and evidence URL and are posted to the moderation log. Staff in Training have no access to the RCON section, and the server rejects requests from roles without the required level.
 
 ---
 

@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd C:\\\\Users\\\\Snow\\\\Documents\\\\The-Echo\\\\src; Get-Content utils\\\\StaffAccess\\.js; Get-Content web\\\\middleware\\\\auth\\.js; Get-Content utils\\\\Database\\.js \\| Select-Object -First 200; Get-Content web\\\\server\\.js; Get-Content events\\\\ChatBridge\\\\onGameChat\\.js \\| Select-Object -First 80; \\(Get-ChildItem -r -File \\| % \\{ \"\\$\\(\\$_\\.FullName\\) \\$\\(\\(Get-Content \\$_\\.FullName\\)\\.Count\\)\" \\}\\) -match 'pot\\|Rcon\\|dashboard\\|admin\\|api'$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

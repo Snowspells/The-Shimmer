@@ -21,25 +21,25 @@
                 <p class="stat-value"><%= linkedAccount.agid %></p>
                 <span class="stat-label">Game Account ID</span>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" id="account-marks">
                 <h3>Marks</h3>
                 <p class="stat-value"><%= linkedAccount.marks %></p>
                 <span class="stat-label">Currency</span>
             </div>
             <div class="stat-card">
                 <h3>Linked Since</h3>
-                <p class="stat-value"><%= linkedAccount.created_at ? new Date(linkedAccount.created_at).toLocaleDateString() : 'N/A' %></p>
+                <p class="stat-value"><%- timeTag(linkedAccount.created_at, 'date') %></p>
                 <span class="stat-label">Account Creation</span>
             </div>
         </div>
 
-        <div class="inventory-section">
+        <div class="inventory-section" id="account-inventory">
             <h2>Inventory</h2>
             <% if (inventory.length > 0) { %>
                 <div class="inventory-grid">
                     <% inventory.forEach(function(item) { %>
                         <div class="inventory-item">
-                            <span><%= typeof item === 'string' ? item : JSON.stringify(item) %></span>
+                            <span><%= typeof item === 'string' ? item : (item.name || JSON.stringify(item)) %><%= item && item.type === 'echo' ? ' (' + item.tier + ')' : '' %></span>
                         </div>
                     <% }); %>
                 </div>

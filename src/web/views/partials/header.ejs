@@ -5,12 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= typeof title !== 'undefined' ? title + ' - ' : '' %>The Shimmer</title>
     <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/local-time.js" defer></script>
 </head>
 <body>
     <nav class="navbar">
-        <div class="nav-brand">
-            <a href="/">The Shimmer</a>
-        </div>
         <div class="nav-links">
             <a href="/">Home</a>
             <% if (user) { %>
@@ -18,15 +16,19 @@
             <a href="/tickets">Live Communication</a>
                 <% if (typeof isLinkedMember !== 'undefined' && isLinkedMember) { %>
                     <a href="/suggestions">Suggestions</a>
+                    <a href="/echo">Echoes</a>
+                    <a href="/shop">Shop</a>
+                    <a href="/infractions">Infractions</a>
+                <% } %>
+                <% if (typeof isLinkedMember !== 'undefined' && isLinkedMember) { %>
+                    <a href="/bugs">Bug Tracker</a>
                 <% } %>
                 <% if (user.webPermissions?.canViewStaffPanel) { %>
                     <a href="/admin">Staff Panel</a>
-                    <% if (user.webPermissions?.canRefreshCommands) { %>
-                        <a href="/admin/reaction-roles">Reaction Roles</a>
-                    <% } %>
                     <span class="staff-badge staff-level-<%= user.staffLevel %>"><%= user.staffLabel %></span>
                 <% } %>
                 <div class="nav-user">
+                    <%- include('notifications') %>
                     <img src="<%= user.avatar
                         ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=32`
                         : `https://cdn.discordapp.com/embed/avatars/${parseInt(user.id) % 5}.png` %>"
@@ -39,7 +41,8 @@
             <% } %>
         </div>
     </nav>
-    <% if (user && aiChatChannelConfigured) { %>
+    <div class="page-shell">
+    <% if (user && (aiChatChannelConfigured || (staffChatConfigured && (user.staffLevel || 0) >= 1))) { %>
         <%- include('mini-chat', { user }) %>
     <% } %>
     <main class="container">

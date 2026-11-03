@@ -1,0 +1,61 @@
+<%- include('../partials/header', { title: 'Ticket Management - Staff Panel', user }) %>
+
+<div class="admin">
+    <div class="admin-header">
+        <h1>Ticket Management</h1>
+        <span class="staff-badge staff-level-<%= user.staffLevel %>"><%= user.staffLabel %></span>
+    </div>
+    <%- include('../partials/admin-nav', { active: 'tickets', permissions }) %>
+
+    <div class="stats-grid">
+        <div class="stat-card"><h3>Total Tickets</h3><p class="stat-value"><%= ticketStats.total %></p></div>
+        <div class="stat-card"><h3>Open</h3><p class="stat-value" style="color: #57f287;"><%= ticketStats.open %></p></div>
+        <div class="stat-card"><h3>Closed</h3><p class="stat-value"><%= ticketStats.closed %></p></div>
+    </div>
+
+    <div class="admin-section">
+        <div class="filter-bar" style="margin-bottom: 1rem;">
+            <a href="/admin/tickets" class="btn btn-sm <%= !currentFilter ? 'btn-primary' : '' %>">All</a>
+            <a href="/admin/tickets?status=open" class="btn btn-sm <%= currentFilter === 'open' ? 'btn-primary' : '' %>">Open</a>
+            <a href="/admin/tickets?status=closed" class="btn btn-sm <%= currentFilter === 'closed' ? 'btn-primary' : '' %>">Closed</a>
+        </div>
+        <h2>Ticket Inbox</h2>
+        <% if (tickets.length > 0) { %>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>ID</th><th>Subject</th><th>Created By</th><th>Status</th><th>Created</th><th>Conversation</th></tr>
+                    </thead>
+                    <tbody>
+                        <% tickets.forEach(function(ticket) { %>
+                            <tr>
+                                <td data-label="ID"><code>#<%= ticket.id %></code></td>
+                                <td data-label="Subject"><%= ticket.subject %></td>
+                                <td data-label="Created By"><%= ticket.creator_name %><br><code class="text-muted"><%= ticket.creator_id %></code></td>
+                                <td data-label="Status"><span class="ticket-status ticket-<%= ticket.status %>"><%= ticket.status %></span></td>
+                                <td data-label="Created"><%- timeTag(ticket.created_at) %></td>
+                                <td data-label="Conversation">
+                                    <% if (ticket.ticket_mode === 'dm' && ticket.status === 'open') { %>
+                                        <a href="/tickets/<%= ticket.id %>" class="btn btn-sm btn-primary">Respond</a>
+                                    <% } else if (ticket.ticket_mode === 'dm' || ticket.status === 'closed') { %>
+                                        <a href="/tickets/<%= ticket.id %>/transcript" class="btn btn-sm">View transcript</a>
+                                    <% } else { %>
+                                        <span class="text-muted">Archived channel ticket</span>
+                                    <% } %>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+        <% } else { %>
+            <div class="empty-state"><p>No tickets found<%= currentFilter ? ` with status "${currentFilter}"` : '' %>. Use <code>/ticketsetup panel</code> in Discord to create a ticket panel.</p></div>
+        <% } %>
+    </div>
+</div>
+
+<script>
+    window.setInterval(() => window.location.reload(), 15000);
+</script>
+
+<%- include('../partials/footer') %>

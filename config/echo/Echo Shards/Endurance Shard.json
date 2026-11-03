@@ -1,0 +1,17 @@
+{
+    "description": "A steady surge of stamina and a little health.",
+    "attributes": {
+        "Health": 1.05,
+        "Stamina": 1.2,
+        "Oxygen": null,
+        "Hunger": null,
+        "Thirst": null,
+        "Growth": null,
+        "Damage": null,
+        "Weight": null,
+        "WalkSpeed": null,
+        "TrotSpeed": null,
+        "SprintSpeed": null,
+        "SwimSpeed": null
+    }
+}

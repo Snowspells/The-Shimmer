@@ -1,0 +1,16 @@
+<%
+const sections = [
+    { key: 'overview', href: '/admin', label: 'Overview', show: true },
+    { key: 'server', href: '/admin/server', label: 'Server Controls', show: permissions.canKickPlayers || permissions.canBanPlayers || permissions.canMutePlayers },
+    { key: 'users', href: '/admin/users', label: 'Linked Users', show: permissions.canManageServer },
+    { key: 'tickets', href: '/admin/tickets', label: 'Ticket Management', show: permissions.canManageTickets },
+    { key: 'reports', href: '/admin/reports', label: 'Reports & Appeals', show: permissions.canJudgeReports },
+    { key: 'chat', href: '/admin/chat', label: 'Chat Moderation', show: permissions.canManageChat },
+    { key: 'catalog', href: '/admin/catalog', label: 'Echo & Shop Catalog', show: permissions.canManageEcho || permissions.canManageShop },
+    { key: 'reaction-roles', href: '/admin/reaction-roles', label: 'Reaction Roles', show: permissions.canRefreshCommands }
+]; %>
+<nav class="filter-bar admin-subnav" aria-label="Staff Panel sections" style="margin-bottom: 1rem;">
+    <% sections.filter(s => s.show).forEach(function(s) { %>
+        <a href="<%= s.href %>" class="btn btn-sm <%= active === s.key ? 'btn-primary' : '' %>"><%= s.label %></a>
+    <% }); %>
+</nav>

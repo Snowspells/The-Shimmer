@@ -1,0 +1,52 @@
+<%- include('../partials/header', { title: 'Reports & Appeals', user }) %>
+
+<div class="admin">
+    <div class="admin-header">
+        <h1>Reports &amp; Appeals</h1>
+    </div>
+    <%- include('../partials/admin-nav', { active: 'reports', permissions }) %>
+
+    <h2>Pending reports</h2>
+    <% if (reports.length === 0) { %><p>No reports waiting.</p><% } %>
+    <% reports.forEach(function(r) { %>
+        <div class="stat-card" style="margin-bottom: 1rem;">
+            <h3>#<%= r.id %> &mdash; <%= r.option_name %></h3>
+            <p><strong><%= r.target_name || r.target_agid %></strong> (<code><%= r.target_agid %></code>) reported by
+                <%= r.reporter_name || 'unknown' %><%= r.reporter_agid ? ' (' + r.reporter_agid + ')' : '' %>.
+                Current infractions: <%= r.points %>/<%= settings.maxInfractions %>.</p>
+            <% if (r.details) { %><p><%= r.details %></p><% } %>
+            <form method="post" action="/admin/reports/<%= r.id %>/judge">
+                <% Object.entries(settings.judgements).forEach(function([name, points]) { %>
+                    <button class="btn btn-sm btn-primary" type="submit" name="judgement" value="<%= name %>"><%= name %> (<%= points %>)</button>
+                <% }); %>
+                <button class="btn btn-sm" type="submit" name="judgement" value="Dismiss">Dismiss</button>
+            </form>
+        </div>
+    <% }); %>
+
+    <% if (permissions.canDecideAppeals) { %>
+        <h2>Pending appeals</h2>
+        <% if (appeals.length === 0) { %><p>No appeals waiting.</p><% } %>
+        <% appeals.forEach(function(a) { %>
+            <div class="stat-card" style="margin-bottom: 1rem;">
+                <h3>Appeal #<%= a.id %> &mdash; <%= a.type %> infraction #<%= a.infraction_id %> (<%= a.points %>)</h3>
+                <p>Player <code><%= a.agid %></code>, report #<%= a.report_id %></p>
+                <p><%= a.message %></p>
+                <form method="post" action="/admin/appeals/<%= a.id %>/decide">
+                    <input type="text" name="note" maxlength="300" placeholder="Note (optional)" class="input-sm">
+                    <button class="btn btn-sm btn-primary" type="submit" name="decision" value="approve">Approve &amp; remove</button>
+                    <button class="btn btn-sm" type="submit" name="decision" value="deny">Deny</button>
+                </form>
+            </div>
+        <% }); %>
+    <% } %>
+
+    <h2>Recently handled</h2>
+    <ul>
+        <% recent.forEach(function(r) { %>
+            <li>#<%= r.id %> <%= r.target_name || r.target_agid %> &mdash; <%= r.option_name %>: <%= r.judgement || r.status %><%= r.judged_by_name ? ' by ' + r.judged_by_name : '' %></li>
+        <% }); %>
+    </ul>
+</div>
+
+<%- include('../partials/footer') %>

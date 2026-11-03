@@ -16,6 +16,12 @@ module.exports = new ApplicationCommand({
             description: 'The AGID to link to the user',
             type: ApplicationCommandOptionType.String,
             required: true
+        }, {
+            name: 'reason',
+            description: 'Why this link is being created or changed',
+            type: ApplicationCommandOptionType.String,
+            required: true,
+            max_length: 300
         }]
     },
     options: {
@@ -32,12 +38,25 @@ module.exports = new ApplicationCommand({
         try {
             const targetUser = interaction.options.getUser('user', true);
             const agid = interaction.options.getString('agid', true);
+            const reason = interaction.options.getString('reason', true).trim();
+            if (!reason) {
+                return await interaction.reply({ content: 'A reason is required.', flags: MessageFlags.Ephemeral });
+            }
             const discordId = targetUser.id;
+
+            const notify = async (title, description) => {
+                try {
+                    await targetUser.send({ embeds: [{ color: 0x6e56cf, title, description: `${description}\nReason: ${reason}`, timestamp: new Date().toISOString() }], allowedMentions: { parse: [] } });
+                } catch (dmErr) {
+                    info(`Could not DM ${discordId} about an admin link change: ${dmErr.message}`);
+                }
+            };
 
             if (client.database.userExists(discordId)) {
                 // Update existing user
                 client.database.updateUser(discordId, { agid });
-                info(`Updated user: DID=${discordId} AGID=${agid}`);
+                info(`Updated user: DID=${discordId} AGID=${agid} by ${interaction.user.id} (reason: ${reason})`);
+                await notify('Your account was updated', `Your linked AGID was changed to \`${agid}\` by ${interaction.user.displayName || interaction.user.username}.`);
 
                 await interaction.reply({
                     content: `Successfully updated <@${discordId}>'s AGID to \`${agid}\`.`,
@@ -46,7 +65,8 @@ module.exports = new ApplicationCommand({
             } else {
                 // Create new user
                 client.database.createUser(discordId, agid, 0, []);
-                info(`New user linked by admin: DID=${discordId} AGID=${agid}`);
+                info(`New user linked by admin: DID=${discordId} AGID=${agid} by ${interaction.user.id} (reason: ${reason})`);
+                await notify('Your account was linked', `Your account was linked to AGID \`${agid}\` by ${interaction.user.displayName || interaction.user.username}.`);
 
                 await interaction.reply({
                     content: `Successfully linked <@${discordId}> with AGID: \`${agid}\`.`,

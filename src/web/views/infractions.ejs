@@ -1,0 +1,40 @@
+<%- include('partials/header', { title: 'Infractions', user }) %>
+
+<div class="dashboard">
+    <h1>Infractions</h1>
+    <% if (!linkedAccount) { %>
+        <div class="not-linked">
+            <h2>Account Not Linked</h2>
+            <p>Link your game account to see your infractions.</p>
+        </div>
+    <% } else { %>
+        <p>You have <strong><%= points %>/<%= settings.maxInfractions %></strong> active infractions. Reaching <%= settings.maxInfractions %> results in a permanent ban until you drop below it.</p>
+
+        <% if (infractions.length === 0) { %>
+            <div class="empty-state"><p>No infractions on record.</p></div>
+        <% } %>
+
+        <% infractions.forEach(function(i) {
+            const appeal = appeals.find(a => a.infraction_id === i.id && a.status === 'pending');
+            const denied = appeals.find(a => a.infraction_id === i.id && a.status === 'denied'); %>
+            <div class="inventory-item" style="margin-bottom: 1rem;">
+                <strong><%= i.type %></strong> (<%= i.points %>) &mdash; <%- timeTag(i.created_at, 'date') %> &mdash; <%= i.status %>
+                <% if (i.status === 'removed' && i.removal_reason) { %><br><small><%= i.removal_reason %></small><% } %>
+                <% if (i.status === 'active') { %>
+                    <% if (appeal) { %>
+                        <p>Appeal pending.</p>
+                    <% } else if (denied) { %>
+                        <p>Appeal denied<%= denied.decision_note ? ': ' + denied.decision_note : '' %>.</p>
+                    <% } else { %>
+                        <form method="post" action="/infractions/<%= i.id %>/appeal">
+                            <textarea name="message" rows="3" minlength="10" maxlength="1000" required placeholder="Why should this infraction be removed?"></textarea>
+                            <button class="btn btn-sm btn-primary" type="submit">Appeal</button>
+                        </form>
+                    <% } %>
+                <% } %>
+            </div>
+        <% }); %>
+    <% } %>
+</div>
+
+<%- include('partials/footer') %>

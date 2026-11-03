@@ -21,6 +21,8 @@ const { info, warn, error, debug, success } = require('./Console');
  *     RCON_CMD_PLAYERLIST = "getplayerlist"
  *     RCON_CMD_KICK       = "kick {agid} {reason}"
  *     RCON_CMD_BAN        = "ban {agid} {hours} {reason}"
+ *     RCON_CMD_MUTE       = "mute {agid} {minutes} {reason}"
+ *     RCON_CMD_UNMUTE     = "unmute {agid}"
  *     RCON_CMD_HEAL       = "heal {agid}"
  *     RCON_CMD_HEALALL    = "healall"
  *     RCON_CMD_WHISPER    = "whisper {agid} {message}"
@@ -47,9 +49,14 @@ class RconManager {
             playerlist: process.env.RCON_CMD_PLAYERLIST || 'getplayerlist',
             kick: process.env.RCON_CMD_KICK || 'kick {agid} {reason}',
             ban: process.env.RCON_CMD_BAN || 'ban {agid} {hours} {reason}',
+            mute: process.env.RCON_CMD_MUTE || 'mute {agid} {minutes} {reason}',
+            unmute: process.env.RCON_CMD_UNMUTE || 'unmute {agid}',
             heal: process.env.RCON_CMD_HEAL || 'heal {agid}',
             healall: process.env.RCON_CMD_HEALALL || 'healall',
             whisper: process.env.RCON_CMD_WHISPER || 'whisper {agid} {message}',
+            setattr: process.env.RCON_CMD_SETATTR || 'setattr {agid} {attribute} {value}',
+            addattr: process.env.RCON_CMD_ADDATTR || 'addattr {agid} {attribute} {value}',
+            unban: process.env.RCON_CMD_UNBAN || 'unban {agid}',
             teleport: process.env.RCON_CMD_TELEPORT || 'teleport {agid} {x} {y} {z}'
         };
 
@@ -257,6 +264,21 @@ class RconManager {
         return this.send(serverName, command);
     }
 
+    async setAttribute(agid, attribute, value, serverName = null) {
+        const command = this.format(this.commands.setattr, { agid, attribute, value });
+        return this.send(serverName, command);
+    }
+
+    async addAttribute(agid, attribute, value, serverName = null) {
+        const command = this.format(this.commands.addattr, { agid, attribute, value });
+        return this.send(serverName, command);
+    }
+
+    async unban(agid, serverName = null) {
+        const command = this.format(this.commands.unban, { agid });
+        return this.send(serverName, command);
+    }
+
     async getPlayers(serverName = null) {
         const command = this.format(this.commands.playerlist, {});
         return this.send(serverName, command);
@@ -269,6 +291,16 @@ class RconManager {
 
     async ban(agid, hours = 0, reason = '', serverName = null) {
         const command = this.format(this.commands.ban, { agid, hours, reason });
+        return this.send(serverName, command);
+    }
+
+    async mute(agid, minutes = 0, reason = '', serverName = null) {
+        const command = this.format(this.commands.mute, { agid, minutes, reason });
+        return this.send(serverName, command);
+    }
+
+    async unmute(agid, serverName = null) {
+        const command = this.format(this.commands.unmute, { agid });
         return this.send(serverName, command);
     }
 
